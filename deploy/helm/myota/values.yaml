@@ -149,17 +149,24 @@ geodataImportRetention:
 objectStorage:
   endpoint: http://myota-seaweedfs:8333
   publicEndpoint: ""
+  bucketInitImage: public.ecr.aws/aws-cli/aws-cli:2.27.41
   awardAssetBucket: myota-award-assets
   awardSignatureBucket: myota-award-signatures
   certificateBucket: myota-certificates
   adifBucket: myota-adif
   geodataImportBucket: myota-geodata-imports
+  profileImageBucket: myota-user-profile-images
+  profileImageExistingSecret: myota-profile-image-s3-auth
+  profileImageAccessKeyKey: access-key
+  profileImageSecretKeyKey: secret-key
   existingSecret: myota-s3-auth
   accessKeyKey: access-key
   secretKeyKey: secret-key
 seaweedfs:
   enabled: false
   image: chrislusf/seaweedfs:latest
+  s3ConfigSecret: myota-seaweedfs-s3-config
+  s3ConfigKey: s3-config.json
   storageSize: 20Gi
   storageClassName: ""
   metricsPort: 9324

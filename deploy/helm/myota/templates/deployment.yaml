@@ -46,6 +46,28 @@ spec:
         {{- else }}
         {{ include "myota.waitForSchema" (dict "root" $ "databaseUrlKey" "core-database-url") | nindent 8 }}
         {{- end }}
+        {{- if eq $name "identity" }}
+        - name: ensure-profile-image-bucket
+          image: {{ $.Values.objectStorage.bucketInitImage | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - >-
+              if aws s3api head-bucket
+              --bucket {{ $.Values.objectStorage.profileImageBucket | quote }}
+              --endpoint-url {{ $.Values.objectStorage.endpoint | quote }}
+              --region us-east-1 >/dev/null 2>&1; then exit 0; fi;
+              aws s3api create-bucket
+              --bucket {{ $.Values.objectStorage.profileImageBucket | quote }}
+              --endpoint-url {{ $.Values.objectStorage.endpoint | quote }}
+              --region us-east-1
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.existingSecret }}, key: {{ $.Values.objectStorage.accessKeyKey }}}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.existingSecret }}, key: {{ $.Values.objectStorage.secretKeyKey }}}}
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+        {{- end }}
       containers:
         - name: {{ $name }}
           image: {{ include "myota.imageReference" (dict "repository" (default $.Values.image.repository $cfg.imageRepository) "tag" (default $.Values.image.tag $cfg.imageTag) "digest" (index $.Values.imageRollout.digests $name)) | quote }}
@@ -67,6 +89,16 @@ spec:
               value: "1"
             - name: MYOTA_ENV
               value: {{ $.Values.auth.environment | quote }}
+            {{- if eq $name "identity" }}
+            - name: MYOTA_OBJECT_STORAGE_ENDPOINT
+              value: {{ $.Values.objectStorage.endpoint | quote }}
+            - name: MYOTA_PROFILE_IMAGE_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.profileImageExistingSecret }}, key: {{ $.Values.objectStorage.profileImageAccessKeyKey }}}}
+            - name: MYOTA_PROFILE_IMAGE_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.profileImageExistingSecret }}, key: {{ $.Values.objectStorage.profileImageSecretKeyKey }}}}
+            - name: MYOTA_PROFILE_IMAGE_BUCKET
+              value: {{ $.Values.objectStorage.profileImageBucket | quote }}
+            {{- end }}
             {{- if eq $name "geodata" }}
             - name: MYOTA_ACTIVITY_URL
               value: {{ $.Values.services.activity.internalUrl | quote }}

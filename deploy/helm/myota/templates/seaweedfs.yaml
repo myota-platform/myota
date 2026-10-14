@@ -37,6 +37,9 @@ spec:
             - -dir=/data
             - -ip.bind=0.0.0.0
             - -metricsPort={{ .Values.seaweedfs.metricsPort }}
+            {{- if .Values.seaweedfs.s3ConfigSecret }}
+            - -s3.config=/etc/seaweedfs-auth/{{ .Values.seaweedfs.s3ConfigKey }}
+            {{- end }}
           env:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
@@ -57,8 +60,21 @@ spec:
           # probe because clients may disconnect while the template renders.
           readinessProbe: {httpGet: {path: /status, port: s3}}
           livenessProbe: {httpGet: {path: /status, port: s3}}
-          volumeMounts: [{name: data, mountPath: /data}]
-      volumes: [{name: data, persistentVolumeClaim: {claimName: myota-seaweedfs-data}}]
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            {{- if .Values.seaweedfs.s3ConfigSecret }}
+            - {name: s3-auth, mountPath: /etc/seaweedfs-auth, readOnly: true}
+            {{- end }}
+      volumes:
+        - {name: data, persistentVolumeClaim: {claimName: myota-seaweedfs-data}}
+        {{- if .Values.seaweedfs.s3ConfigSecret }}
+        - name: s3-auth
+          secret:
+            secretName: {{ .Values.seaweedfs.s3ConfigSecret | quote }}
+            items:
+              - key: {{ .Values.seaweedfs.s3ConfigKey | quote }}
+                path: {{ .Values.seaweedfs.s3ConfigKey | quote }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
