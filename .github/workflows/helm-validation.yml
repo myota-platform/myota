@@ -1,4 +1,4 @@
-name: Helm chart validation
+name: Monorepo Helm validation
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-name: Build and publish deployment runtime images
+name: MyOTA deployment checks and image
 
 on:
   push:
@@ -9,6 +9,9 @@ on:
       - ".github/workflows/sync-image-digests.yml"
       - "scripts/sync-image-digests.py"
       - "**/*.md"
+    paths:
+      - "deploy/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [main, testing]
   workflow_dispatch:
@@ -18,6 +21,9 @@ permissions:
 
 jobs:
   test:
+    defaults:
+      run:
+        working-directory: deploy
     name: Run deployment runtime tests
     runs-on: ubuntu-latest
     env:
@@ -33,6 +39,9 @@ jobs:
         run: python -m unittest discover -s tests -v
 
   build-and-publish:
+    defaults:
+      run:
+        working-directory: deploy
     needs: [test]
     runs-on: ubuntu-latest
     strategy:
@@ -76,7 +85,7 @@ jobs:
       - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./deploy
           push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
           tags: ${{ steps.image-tags.outputs.tags }}
           labels: |
