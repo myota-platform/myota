@@ -21,9 +21,18 @@ optional per-programme OIDC mappings.
 - The identity service does not own programmes, entities, activity/QSOs,
   awards, or admin-web presentation; those boundaries are defined in the
   [repository map](https://github.com/myota-platform/myota-docs/blob/main/docs/repository-map.md).
-- The current slice includes login, registration, account administration,
+- The current slice includes login, account administration,
   callsign verification fields, scoped roles, privacy export/deactivation,
   and security-event primitives.
+
+Public participant registration is disabled until verified-email setup and
+registration abuse controls are implemented and enabled. Account creation
+requires `identity.accounts.create`; new accounts receive the `PARTICIPANT`
+role and stay in `PENDING_SETUP` without a password. Granting additional roles
+also requires `identity.roles.assign`; callers can grant only roles whose
+permissions are a strict subset of their current permissions, and cannot
+change their own roles. Invitation and credential setup are still pending the
+email-delivery workstream.
 
 Global operators are exempt from the general per-account/source login-attempt
 throttle so repeated legitimate administrator sign-ins do not lock out the
@@ -37,10 +46,14 @@ Account administration also exposes the Phase 1 resource aliases: `PATCH
 /v1/identity/accounts/{accountId}/primary-callsign`. The older action routes
 remain compatibility aliases. See the [Phase 1 API resource update record](https://github.com/myota-platform/myota-docs/blob/main/docs/api-phase1-resource-updates.md).
 
-The unit-test adapter can run in memory. Durable Compose/Kubernetes operation
-uses PostgreSQL through the platform/deployment configuration and requires
-explicit production secrets; do not use the test adapter as a production
-data store.
+The unit-test adapter can run in memory. Durable runtime uses PostgreSQL, but
+Identity currently hydrates `account`, authentication, role, session, and
+security-event state into process memory from the `service_state` JSONB
+snapshot. The relational authentication tables are not yet the runtime source
+of truth, and this snapshot model is not qualified for concurrent Identity
+replicas. The PostgreSQL-authority migration is tracked in the Identity
+workstream. Production secrets remain deployment-managed; do not use the test
+adapter as a production data store.
 
 ## Test and run locally
 
