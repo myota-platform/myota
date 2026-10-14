@@ -171,6 +171,18 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertIn("uid: myota-tempo", datasources)
         self.assertIn("datasourceUid: myota-loki", datasources)
 
+    def test_log_to_trace_macro_survives_provisioning_environment_expansion(
+        self,
+    ):
+        for prefix in ("observability", "helm/myota/observability"):
+            config = (
+                ROOT
+                / prefix
+                / "grafana/provisioning/datasources/datasources.yml"
+            ).read_text()
+            self.assertIn("url: '$${__value.raw}'", config)
+            self.assertNotIn("url: '${__value.raw}'", config)
+
     def test_logs_dashboard_uses_bounded_filters_and_privacy_safe_queries(
         self,
     ):
