@@ -174,23 +174,66 @@
   "templating": {
     "list": [
       {
+        "allValue": ".*",
         "current": {
-          "selected": false,
-          "text": ".*",
-          "value": ".*"
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
         },
+        "includeAll": true,
         "hide": 0,
-        "label": "Service name (regex)",
+        "label": "Service",
+        "multi": false,
         "name": "service",
         "options": [
           {
-            "selected": true,
-            "text": ".*",
-            "value": ".*"
+            "selected": false,
+            "text": "myota-activity",
+            "value": "myota-activity"
+          },
+          {
+            "selected": false,
+            "text": "myota-activity-notifications",
+            "value": "myota-activity-notifications"
+          },
+          {
+            "selected": false,
+            "text": "myota-activity-outbox",
+            "value": "myota-activity-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-core-outbox",
+            "value": "myota-core-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-geo-outbox",
+            "value": "myota-geo-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-geodata",
+            "value": "myota-geodata"
+          },
+          {
+            "selected": false,
+            "text": "myota-geodata-import-processing",
+            "value": "myota-geodata-import-processing"
+          },
+          {
+            "selected": false,
+            "text": "myota-identity",
+            "value": "myota-identity"
+          },
+          {
+            "selected": false,
+            "text": "myota-programmes",
+            "value": "myota-programmes"
           }
         ],
-        "query": ".*",
-        "type": "textbox"
+        "query": "myota-activity,myota-activity-notifications,myota-activity-outbox,myota-core-outbox,myota-geo-outbox,myota-geodata,myota-geodata-import-processing,myota-identity,myota-programmes",
+        "type": "custom"
       }
     ]
   },
