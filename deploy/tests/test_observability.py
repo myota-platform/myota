@@ -98,6 +98,54 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             )
         )
 
+    def test_trace_dashboard_uses_supported_bounded_tempo_searches(self):
+        dashboard = json.loads(
+            (
+                ROOT
+                / "observability"
+                / "grafana"
+                / "dashboards"
+                / "myota-traces.json"
+            ).read_text()
+        )
+        self.assertEqual(dashboard["uid"], "myota-traces")
+        self.assertEqual(dashboard["time"], {"from": "now-30m", "to": "now"})
+        self.assertEqual(dashboard["refresh"], "30s")
+        self.assertEqual(dashboard["timezone"], "utc")
+        queries = [
+            target
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+        ]
+        self.assertEqual(len(queries), 2)
+        self.assertTrue(
+            all(
+                query.get("datasource", {}).get("uid") == "myota-tempo"
+                and query.get("queryType") == "traceql"
+                and query.get("tableType") == "traces"
+                and query.get("limit") == 50
+                for query in queries
+            )
+        )
+        query_text = "\n".join(query["query"] for query in queries)
+        self.assertIn("span:status = error", query_text)
+        self.assertIn("trace:duration > 1s", query_text)
+        self.assertIn('resource.service.namespace = "myota"', query_text)
+        self.assertTrue(all("metricsQuery" not in query for query in queries))
+        helm_template = (
+            ROOT / "helm/myota/templates/observability.yaml"
+        ).read_text()
+        self.assertIn("myota-traces.json", helm_template)
+        self.assertIn(
+            "/etc/grafana/dashboards/myota-traces.json", helm_template
+        )
+        datasources = (
+            ROOT
+            / "observability/grafana/provisioning/datasources/datasources.yml"
+        ).read_text()
+        self.assertIn("uid: myota-tempo", datasources)
+        self.assertIn("datasourceUid: myota-loki", datasources)
+
     def test_seaweed_dashboard_is_valid_and_rolls_out_with_helm(self):
         dashboard_path = (
             ROOT
