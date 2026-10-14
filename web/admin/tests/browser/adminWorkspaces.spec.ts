@@ -564,6 +564,7 @@ test("Grafana stays inside the Admin UI and renews its expiring auth cookie", as
 }) => {
   let refreshes = 0;
   await page.addInitScript(() => {
+    if (window.top !== window) return;
     const encode = (value: unknown) =>
       btoa(JSON.stringify(value))
         .replace(/=/g, "")
