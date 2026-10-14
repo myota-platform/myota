@@ -52,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: myota-web-${{ github.sha }}
-          path: dist/
+          path: web/participant/dist/
           if-no-files-found: error
           retention-days: 7
       - name: Set up Docker Buildx

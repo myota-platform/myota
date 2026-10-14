@@ -15,7 +15,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             dashboard = json.loads(source.read_text())
             mirror = (
                 ROOT
-                / "deploy/helm/myota/observability/grafana/dashboards"
+                / "helm/myota/observability/grafana/dashboards"
                 / source.name
             )
             chart_dashboard = json.loads(
@@ -31,7 +31,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
 
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
-            ROOT / "deploy/helm/myota/templates/observability.yaml"
+            ROOT / "helm/myota/templates/observability.yaml"
         ).read_text()
         start = template.index('"postgres-monitor-role"')
         end = template.index("---", start)
@@ -138,16 +138,16 @@ class ObservabilityConfigurationTests(unittest.TestCase):
     def test_loki_uses_s3_retention_and_native_otlp_pipeline(self):
         compose_config = (ROOT / "observability" / "loki.yaml").read_text()
         helm_config = (
-            ROOT / "deploy/helm/myota/observability/loki.yaml"
+            ROOT / "helm/myota/observability/loki.yaml"
         ).read_text()
         compose_collector = (
             ROOT / "observability" / "otel-collector.yaml"
         ).read_text()
         helm_collector = (
-            ROOT / "deploy/helm/myota/observability/otel-collector.yaml"
+            ROOT / "helm/myota/observability/otel-collector.yaml"
         ).read_text()
         helm_template = (
-            ROOT / "deploy/helm/myota/templates/observability.yaml"
+            ROOT / "helm/myota/templates/observability.yaml"
         ).read_text()
         compose = (ROOT / "compose.yaml").read_text()
 
@@ -177,19 +177,19 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         dashboard = json.loads(
             (
                 ROOT
-                / "deploy/helm/myota/observability/grafana/dashboards"
+                / "helm/myota/observability/grafana/dashboards"
                 / "myota-k3s-workload.json"
             ).read_text()
         )
         helm_template = (
-            ROOT / "deploy/helm/myota/templates/observability.yaml"
+            ROOT / "helm/myota/templates/observability.yaml"
         ).read_text()
         prom_config = (
-            ROOT / "deploy/helm/myota/observability/prometheus.yml"
+            ROOT / "helm/myota/observability/prometheus.yml"
         ).read_text()
         dashboard_provider = (
             ROOT
-            / "deploy/helm/myota/observability/grafana/provisioning"
+            / "helm/myota/observability/grafana/provisioning"
             / "dashboards/dashboards.yml"
         ).read_text()
 
@@ -237,7 +237,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         chart_dashboard = json.loads(
             (
                 ROOT
-                / "deploy/helm/myota/observability/grafana/dashboards"
+                / "helm/myota/observability/grafana/dashboards"
                 / "myota-application-workflows.json"
             ).read_text()
         )
@@ -309,9 +309,9 @@ class ObservabilityConfigurationTests(unittest.TestCase):
 
     def test_operations_runtime_and_schema_are_retired(self):
         compose = (ROOT / "compose.yaml").read_text()
-        chart_values = (ROOT / "deploy/helm/myota/values.yaml").read_text()
+        chart_values = (ROOT / "helm/myota/values.yaml").read_text()
         chart_deployment = (
-            ROOT / "deploy/helm/myota/templates/deployment.yaml"
+            ROOT / "helm/myota/templates/deployment.yaml"
         ).read_text()
         collector = (ROOT / "observability/otel-collector.yaml").read_text()
         self.assertNotIn("myota-operations", compose)
