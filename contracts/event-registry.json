@@ -120,8 +120,8 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py"
       ]
     },
     {
@@ -235,8 +235,8 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py"
       ]
     },
     {
@@ -316,7 +316,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/activity_repository.py"
+        "apps/activity/activity_repository.py"
       ]
     },
     {
@@ -360,7 +360,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/activity_repository.py"
+        "apps/activity/activity_repository.py"
       ]
     },
     {
@@ -466,8 +466,8 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py"
       ]
     },
     {
@@ -591,7 +591,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/awards.py"
+        "apps/activity/awards.py"
       ]
     },
     {
@@ -715,7 +715,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/awards.py"
+        "apps/activity/awards.py"
       ]
     },
     {
@@ -807,7 +807,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/awards.py"
+        "apps/activity/awards.py"
       ]
     },
     {
@@ -899,7 +899,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/awards.py"
+        "apps/activity/awards.py"
       ]
     },
     {
@@ -963,7 +963,7 @@
         "additionalProperties": true
       },
       "producerSources": [
-        "myota-activity-service/awards.py"
+        "apps/activity/awards.py"
       ]
     },
     {
@@ -976,7 +976,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1018,7 +1018,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "personal-and-operational-data",
       "payloadSchema": {
@@ -1083,7 +1083,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "personal-and-operational-data",
       "payloadSchema": {
@@ -1138,7 +1138,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-operational-data",
       "payloadSchema": {
@@ -1176,7 +1176,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1216,7 +1216,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1267,7 +1267,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1312,7 +1312,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1354,7 +1354,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-operational-data",
       "payloadSchema": {
@@ -1392,7 +1392,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-operational-data",
       "payloadSchema": {
@@ -1430,7 +1430,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1472,7 +1472,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1516,7 +1516,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1580,7 +1580,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1627,7 +1627,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1698,7 +1698,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-operational-data",
       "payloadSchema": {
@@ -1734,7 +1734,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1779,7 +1779,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "internal-operational-metadata",
       "payloadSchema": {
@@ -1809,7 +1809,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "internal-operational-metadata",
       "payloadSchema": {
@@ -1835,7 +1835,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1872,7 +1872,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-review-metadata",
       "payloadSchema": {
@@ -1909,7 +1909,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "internal-operational-metadata",
       "payloadSchema": {
@@ -1939,7 +1939,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-source-data",
       "payloadSchema": {
@@ -2024,7 +2024,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "internal-operational-metadata",
       "payloadSchema": {
@@ -2062,7 +2062,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "geospatial-and-operational-data",
       "payloadSchema": {
@@ -2115,7 +2115,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "internal-operational-metadata",
       "payloadSchema": {
@@ -2157,7 +2157,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-geodata-callsite",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "dataClassification": "internal-configuration-and-source-metadata",
       "payloadSchema": {
@@ -2239,7 +2239,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2274,7 +2274,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2419,7 +2419,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2451,7 +2451,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2483,7 +2483,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2570,7 +2570,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2636,7 +2636,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2664,7 +2664,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2747,7 +2747,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2830,7 +2830,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2865,7 +2865,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2900,7 +2900,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2959,7 +2959,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -2987,7 +2987,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3015,7 +3015,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3070,7 +3070,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3125,7 +3125,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3200,7 +3200,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3291,7 +3291,7 @@
       "disposition": "Activity notification projection; current broad durable will be narrowed to registered event families",
       "payloadEvidence": "source-derived-identity-callsite",
       "producerSources": [
-        "myota-identity-service/identity.py"
+        "apps/identity/identity.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3324,7 +3324,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3350,7 +3350,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3457,7 +3457,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3564,7 +3564,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3671,7 +3671,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3778,7 +3778,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3885,7 +3885,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -3915,7 +3915,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -4022,7 +4022,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -4052,7 +4052,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -4261,7 +4261,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -4367,7 +4367,7 @@
       "disposition": "no current subscriber; retain as a domain fact without provisioning a no-op durable",
       "payloadEvidence": "source-derived-programme-callsite",
       "producerSources": [
-        "myota-programme-service/programmes.py"
+        "apps/programmes/programmes.py"
       ],
       "payloadSchema": {
         "type": "object",
@@ -4491,12 +4491,12 @@
       },
       "workIdSource": "myota_activity.activity_job.id",
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py",
-        "myota-activity-service/awards.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py",
+        "apps/activity/awards.py"
       ],
       "consumerSources": [
-        "myota-activity-service/activity_worker.py"
+        "apps/activity/activity_worker.py"
       ]
     },
     {
@@ -4524,12 +4524,12 @@
       },
       "workIdSource": "myota_activity.activity_job.id",
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py",
-        "myota-activity-service/awards.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py",
+        "apps/activity/awards.py"
       ],
       "consumerSources": [
-        "myota-activity-service/activity_worker.py"
+        "apps/activity/activity_worker.py"
       ]
     },
     {
@@ -4557,12 +4557,12 @@
       },
       "workIdSource": "myota_activity.activity_job.id",
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py",
-        "myota-activity-service/awards.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py",
+        "apps/activity/awards.py"
       ],
       "consumerSources": [
-        "myota-activity-service/activity_worker.py"
+        "apps/activity/activity_worker.py"
       ]
     },
     {
@@ -4590,12 +4590,12 @@
       },
       "workIdSource": "myota_activity.activity_job.id",
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py",
-        "myota-activity-service/awards.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py",
+        "apps/activity/awards.py"
       ],
       "consumerSources": [
-        "myota-activity-service/activity_worker.py"
+        "apps/activity/activity_worker.py"
       ]
     },
     {
@@ -4623,12 +4623,12 @@
       },
       "workIdSource": "myota_activity.activity_job.id",
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py",
-        "myota-activity-service/awards.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py",
+        "apps/activity/awards.py"
       ],
       "consumerSources": [
-        "myota-activity-service/activity_worker.py"
+        "apps/activity/activity_worker.py"
       ]
     },
     {
@@ -4656,12 +4656,12 @@
       },
       "workIdSource": "myota_activity.activity_job.id",
       "producerSources": [
-        "myota-activity-service/activity.py",
-        "myota-activity-service/activity_repository.py",
-        "myota-activity-service/awards.py"
+        "apps/activity/activity.py",
+        "apps/activity/activity_repository.py",
+        "apps/activity/awards.py"
       ],
       "consumerSources": [
-        "myota-activity-service/activity_worker.py"
+        "apps/activity/activity_worker.py"
       ]
     },
     {
@@ -4694,10 +4694,10 @@
       },
       "workIdSource": "myota_geo.import_run.id",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "consumerSources": [
-        "myota-geodata-service/geodata_import_worker.py"
+        "apps/geodata/geodata_import_worker.py"
       ],
       "legacySubject": "myota.geodata.import.preprocess.v1"
     },
@@ -4731,10 +4731,10 @@
       },
       "workIdSource": "myota_geo.geodata_import_processing_queue.id",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "consumerSources": [
-        "myota-geodata-service/geodata_import_worker.py"
+        "apps/geodata/geodata_import_worker.py"
       ],
       "legacySubject": "myota.geodata.import.process.v1"
     },
@@ -4767,10 +4767,10 @@
       },
       "workIdSource": "myota_geo.service_state.entityDeletionJobs[jobId]",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "consumerSources": [
-        "myota-geodata-service/geodata_import_worker.py"
+        "apps/geodata/geodata_import_worker.py"
       ],
       "legacySubject": "myota.geodata.entity.delete.v1"
     },
@@ -4826,10 +4826,10 @@
       },
       "workIdSource": "myota_geo.geodata_entity.locationEnrichmentRequestId",
       "producerSources": [
-        "myota-geodata-service/geodata.py"
+        "apps/geodata/geodata.py"
       ],
       "consumerSources": [
-        "myota-geodata-service/geodata_import_worker.py"
+        "apps/geodata/geodata_import_worker.py"
       ],
       "legacySubject": "myota.geodata.entity.location-enrichment.v1"
     }

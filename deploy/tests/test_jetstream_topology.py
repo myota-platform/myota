@@ -42,7 +42,7 @@ class JetStreamTopologyTests(unittest.TestCase):
 
     def test_jetstream_provisioner_runs_as_an_upgrade_safe_job(self):
         template = (
-            ROOT / "deploy/helm/myota/templates/jetstream-provisioner.yaml"
+            ROOT / "helm/myota/templates/jetstream-provisioner.yaml"
         ).read_text()
         self.assertIn(
             "name: myota-jetstream-provisioner-{{ .Release.Revision }}",
@@ -55,7 +55,7 @@ class JetStreamTopologyTests(unittest.TestCase):
     def test_activity_topology_is_provisioned_on_first_install(self):
         template = (
             ROOT
-            / "deploy/helm/myota/templates/activity-notification-topology.yaml"
+            / "helm/myota/templates/activity-notification-topology.yaml"
         ).read_text()
         self.assertIn(
             "name: myota-activity-notification-provisioner-{{ .Release.Revision }}",

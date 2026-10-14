@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY = ROOT / "contracts/event-registry.json"
+REGISTRY = ROOT / "event-registry.json"
 
 
 def runtime_catalog(registry: dict) -> dict:

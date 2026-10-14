@@ -107,9 +107,9 @@ services:
     depends_on: {migrations: {condition: service_completed_successfully}}
     ports: ["8002:8002"]
   geodata:
-    build: ../myota-geodata-service
+    build: ../apps/geodata
     restart: unless-stopped
-    env_file: [../myota-geodata-service/.env]
+    env_file: [../apps/geodata/.env]
     environment:
       SERVICE: geodata
       GEO_DATABASE_URL: postgresql://myota:myota-dev-only@geo-db:5432/myota_geo
@@ -140,7 +140,7 @@ services:
     mem_limit: 1g
     mem_reservation: 256m
   geodata-import-retention:
-    build: ../myota-geodata-service
+    build: ../apps/geodata
     restart: unless-stopped
     command: ["python3", "geodata_retention_worker.py", "--loop"]
     environment:
@@ -194,7 +194,7 @@ services:
       MYOTA_ACTIVITY_DB_POOL_MAX: "4"
     depends_on: {migrations: {condition: service_completed_successfully}, nats: {condition: service_started}, seaweedfs: {condition: service_healthy}}
   activity-adif-retention:
-    build: ../myota-activity-service
+    build: ../apps/activity
     restart: unless-stopped
     command: ["python3", "adif_retention_worker.py", "--loop"]
     environment:
@@ -240,7 +240,7 @@ services:
     depends_on: [identity, programmes, geodata, activity]
     ports: ["8080:8080"]
   admin-web:
-    build: ../myota-admin-web
+    build: ../web/admin
     restart: unless-stopped
     environment:
       MYOTA_GATEWAY_UPSTREAM: gateway:8080
@@ -354,7 +354,7 @@ services:
       OUTBOX_WORKER: geo-outbox
     depends_on: {migrations: {condition: service_completed_successfully}, nats: {condition: service_started}}
   geodata-import-processing:
-    build: ../myota-geodata-service
+    build: ../apps/geodata
     restart: unless-stopped
     stop_grace_period: 3m
     command: ["python3", "geodata_import_worker.py"]
