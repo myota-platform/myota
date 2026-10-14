@@ -73,10 +73,23 @@ class VerticalSliceTests(unittest.TestCase):
     def test_identity_supports_operator_multiple_callsigns_and_primary(
         self,
     ) -> None:
+        root_account = IdentityHandler.store.items[
+            "00000000-0000-4000-8000-000000000001"
+        ]
+        authorization = (
+            "Bearer "
+            + IdentityHandler._mint_tokens(root_account, {})["accessToken"]
+        )
         result = IdentityHandler.create_account(
             None,
             {
-                "_body": {"displayName": "SWL", "participationType": "SWL"},
+                "_body": {
+                    "displayName": "SWL",
+                    "email": "swl@example.test",
+                    "participationType": "SWL",
+                },
+                "_http": "1",
+                "Authorization": authorization,
                 "Idempotency-Key": "account-1",
             },
         )
@@ -87,9 +100,12 @@ class VerticalSliceTests(unittest.TestCase):
             {
                 "_body": {
                     "displayName": "Operator",
+                    "email": "operator@example.test",
                     "participationType": "OPERATOR",
                     "callsign": "N0TEST",
                 },
+                "_http": "1",
+                "Authorization": authorization,
                 "Idempotency-Key": "account-2",
             },
         )

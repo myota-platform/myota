@@ -43,6 +43,11 @@ ADMIN_PERMISSION_CATALOG = [
         "group": "Observability",
     },
     {
+        "code": "identity.accounts.create",
+        "label": "Create participant accounts",
+        "group": "Identity",
+    },
+    {
         "code": "identity.admin",
         "label": "View and edit user accounts",
         "group": "Identity",
@@ -123,6 +128,13 @@ ADMIN_PERMISSION_CATALOG = [
 ADMIN_PERMISSION_CODES = {item["code"] for item in ADMIN_PERMISSION_CATALOG}
 DEFAULT_ROLE_DEFINITIONS = [
     {
+        "code": "PARTICIPANT",
+        "name": "Participant",
+        "description": "Base participant access without administrative permissions.",
+        "scopes": [],
+        "system": True,
+    },
+    {
         "code": "GLOBAL_OPERATOR",
         "name": "Global administrator",
         "description": "Full platform administration, including role management.",
@@ -134,6 +146,7 @@ DEFAULT_ROLE_DEFINITIONS = [
         "name": "Identity administrator",
         "description": "Manage users, callsigns and role assignments.",
         "scopes": [
+            "identity.accounts.create",
             "identity.admin",
             "identity.roles.assign",
             "identity.audit.read",
@@ -371,6 +384,12 @@ class IdentityHandler(JsonHandler):
             raise PermissionError("access token required")
         if claims.get("jti") in IdentityHandler._bucket("revokedJti"):
             raise PermissionError("token has been revoked")
+        if claims.get("tokenType") == "access":
+            account = IdentityHandler.store.items.get(claims.get("sub"))
+            if not account or account.get("status") != "ACTIVE":
+                raise PermissionError("account is inactive or unavailable")
+            claims["roles"] = IdentityHandler._roles(account["id"])
+            claims["scp"] = IdentityHandler._scopes(account["id"])
         granted = set(claims.get("scp", []))
         if scopes and "*" not in granted and not set(scopes).issubset(granted):
             raise PermissionError("required scope is missing")
@@ -387,19 +406,23 @@ class IdentityHandler(JsonHandler):
         event_type: str,
         payload: dict[str, Any],
         aggregate_id: str | None = None,
+        actor_id: str | None = None,
     ) -> None:
+        safe_payload = dict(payload)
+        if actor_id:
+            safe_payload["actorId"] = actor_id
         record = {
             "id": new_id(),
             "eventType": event_type,
             "occurredAt": now(),
-            "payload": payload,
+            "payload": safe_payload,
         }
         IdentityHandler._bucket("securityEvents")[record["id"]] = record
         IdentityHandler.store.event(
             event_type,
             "account",
             aggregate_id or payload.get("accountId", "system"),
-            payload,
+            safe_payload,
         )
 
     @staticmethod
@@ -528,30 +551,50 @@ class IdentityHandler(JsonHandler):
     @staticmethod
     def create_account(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
         body = p["_body"]
-        require(body, "displayName", "participationType")
+        actor = IdentityHandler._admin_authorize(p, "identity.accounts.create")
+        require(body, "displayName", "participationType", "email")
+        if "password" in body:
+            raise ValueError(
+                "passwords cannot be set during account creation; use the invitation setup flow"
+            )
+        if body.get("roles") is not None and not isinstance(
+            body.get("roles"), list
+        ):
+            raise ValueError("roles must be an array")
         if body["participationType"] not in ("OPERATOR", "SWL"):
             raise ValueError("participationType must be OPERATOR or SWL")
-        if body.get("email") and IdentityHandler._account_for_email(
-            body["email"]
-        ):
-            raise ValueError("email already exists")
+        normalized_email = str(body["email"]).strip().casefold()
+        if "@" not in normalized_email:
+            raise ValueError("email must be a valid address")
+        requested_roles = body.get("roles", [])
+        if any(not isinstance(role, dict) for role in requested_roles):
+            raise ValueError("each role assignment must be an object")
 
         def create() -> dict[str, Any]:
+            if IdentityHandler._account_for_email(normalized_email):
+                raise ValueError("email already exists")
             account_id = new_id()
+            if requested_roles:
+                role_actor = IdentityHandler._admin_authorize(
+                    p, "identity.roles.assign"
+                )
+                IdentityHandler._validate_role_grants(
+                    [{"code": "PARTICIPANT"}, *requested_roles],
+                    role_actor,
+                    account_id,
+                )
             account = {
                 "id": account_id,
                 "displayName": body["displayName"],
-                "email": body.get("email"),
+                "email": normalized_email,
                 "participationType": body["participationType"],
-                "status": "ACTIVE",
+                "status": "PENDING_SETUP",
                 "callsigns": [],
                 "primaryCallsignId": None,
                 "createdAt": now(),
                 "updatedAt": now(),
             }
             IdentityHandler.store.items[account_id] = account
-            if body.get("password"):
-                IdentityHandler._set_password(account_id, body["password"])
             if body.get("callsign"):
                 IdentityHandler._add_callsign(
                     account, body["callsign"], "UNVERIFIED", "self-asserted"
@@ -560,21 +603,48 @@ class IdentityHandler(JsonHandler):
                 "identity.account.created.v1",
                 "account",
                 account_id,
-                {"account": account},
+                {"account": account, "actorId": actor.get("sub")},
             )
-            return {**account, "_status": 201}
+            if requested_roles:
+                IdentityHandler._replace_roles(
+                    account_id,
+                    [{"code": "PARTICIPANT"}, *requested_roles],
+                    p,
+                )
+            else:
+                participant = {
+                    "id": new_id(),
+                    "accountId": account_id,
+                    "role": "PARTICIPANT",
+                    "programmeSlug": None,
+                    "jurisdiction": None,
+                    "entityType": None,
+                    "scopes": [],
+                    "createdAt": now(),
+                    "validTo": None,
+                }
+                IdentityHandler._bucket("roles")[participant["id"]] = (
+                    participant
+                )
+                IdentityHandler._audit(
+                    "identity.role.assigned.v1",
+                    participant,
+                    account_id,
+                    actor_id=actor.get("sub"),
+                )
+            return {
+                **account,
+                "roles": IdentityHandler._roles(account_id),
+                "_status": 201,
+            }
 
         return IdentityHandler.store.once(p.get("Idempotency-Key"), create)
 
     @staticmethod
     def register(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
-        body = p["_body"]
-        require(body, "displayName", "email", "password", "participationType")
-        if len(body["password"]) < 12:
-            raise ValueError("password must contain at least 12 characters")
-        created = IdentityHandler.create_account(_, p)
-        account = {k: v for k, v in created.items() if k != "_status"}
-        return {**IdentityHandler._mint_tokens(account, p), "_status": 201}
+        raise PermissionError(
+            "public participant registration is unavailable until email verification and abuse controls are deployed"
+        )
 
     @staticmethod
     def login(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
@@ -890,30 +960,9 @@ class IdentityHandler(JsonHandler):
         account_id: str, assignments: list[dict[str, Any]], p: dict[str, str]
     ) -> list[dict[str, Any]]:
         claims = IdentityHandler._admin_authorize(p, "identity.roles.assign")
-        normalized: list[dict[str, Any]] = []
-        for assignment in assignments:
-            code = str(
-                assignment.get("code") or assignment.get("role") or ""
-            ).upper()
-            definition = IdentityHandler._role_definition(code)
-            if not definition:
-                raise ValueError(f"unknown role: {code}")
-            if (
-                code == "GLOBAL_OPERATOR"
-                and claims
-                and "*" not in set(claims.get("scp", []))
-            ):
-                raise PermissionError(
-                    "only a global administrator can assign the global administrator role"
-                )
-            normalized.append(
-                {
-                    "code": code,
-                    "programmeSlug": assignment.get("programmeSlug"),
-                    "jurisdiction": assignment.get("jurisdiction"),
-                    "entityType": assignment.get("entityType"),
-                }
-            )
+        normalized = IdentityHandler._validate_role_grants(
+            assignments, claims, account_id
+        )
         current = IdentityHandler._roles(account_id)
         current_global = any(
             item.get("role") == "GLOBAL_OPERATOR" for item in current
@@ -957,8 +1006,48 @@ class IdentityHandler(JsonHandler):
             "identity.roles.replaced.v1",
             {"accountId": account_id, "roles": result},
             account_id,
+            actor_id=claims.get("sub") if claims else None,
         )
         return result
+
+    @staticmethod
+    def _validate_role_grants(
+        assignments: list[dict[str, Any]],
+        claims: dict[str, Any],
+        target_account_id: str,
+    ) -> list[dict[str, Any]]:
+        if claims and claims.get("sub") == target_account_id:
+            raise PermissionError(
+                "actors cannot change their own role assignments"
+            )
+        normalized: list[dict[str, Any]] = []
+        for assignment in assignments:
+            if not isinstance(assignment, dict):
+                raise ValueError("each role assignment must be an object")
+            code = str(
+                assignment.get("code") or assignment.get("role") or ""
+            ).upper()
+            definition = IdentityHandler._role_definition(code)
+            if not definition:
+                raise ValueError(f"unknown role: {code}")
+            actor_scopes = set(claims.get("scp", [])) if claims else set()
+            target_scopes = set(definition.get("scopes", []))
+            may_grant = ("*" in actor_scopes and "*" not in target_scopes) or (
+                "*" not in target_scopes and target_scopes < actor_scopes
+            )
+            if claims and not may_grant:
+                raise PermissionError(
+                    "actors may grant only roles strictly below their authority"
+                )
+            normalized.append(
+                {
+                    "code": code,
+                    "programmeSlug": assignment.get("programmeSlug"),
+                    "jurisdiction": assignment.get("jurisdiction"),
+                    "entityType": assignment.get("entityType"),
+                }
+            )
+        return normalized
 
     @staticmethod
     def list_security_events(
@@ -1177,13 +1266,16 @@ class IdentityHandler(JsonHandler):
         definition = IdentityHandler._role_definition(code)
         if not definition:
             raise ValueError(f"unknown role: {code}")
-        if (
-            code == "GLOBAL_OPERATOR"
-            and claims
-            and "*" not in set(claims.get("scp", []))
-        ):
+        if claims and claims.get("sub") == p["accountId"]:
+            raise PermissionError("actors cannot assign roles to themselves")
+        actor_scopes = set(claims.get("scp", [])) if claims else set()
+        target_scopes = set(definition.get("scopes", []))
+        may_grant = ("*" in actor_scopes and "*" not in target_scopes) or (
+            "*" not in target_scopes and target_scopes < actor_scopes
+        )
+        if claims and not may_grant:
             raise PermissionError(
-                "only a global operator can assign global operator role"
+                "actors may grant only roles strictly below their authority"
             )
         role = {
             "id": new_id(),
@@ -1198,7 +1290,10 @@ class IdentityHandler(JsonHandler):
         }
         IdentityHandler._bucket("roles")[role["id"]] = role
         IdentityHandler._audit(
-            "identity.role.assigned.v1", role, p["accountId"]
+            "identity.role.assigned.v1",
+            role,
+            p["accountId"],
+            actor_id=claims.get("sub") if claims else None,
         )
         return {**role, "_status": 201}
 

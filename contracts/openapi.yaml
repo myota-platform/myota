@@ -20,11 +20,13 @@ paths:
   /v1/identity/auth/register:
     post:
       tags: [Identity]
-      summary: Register an operator or SWL and create a session
+      summary: Disabled until email verification and registration abuse controls are deployed
+      deprecated: true
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/RegisterAccount' } } }
-      responses: { '201': { description: Registered and authenticated } }
+      responses:
+        '403': { description: Public registration is not available }
   /v1/identity/auth/login:
     post:
       tags: [Identity]
@@ -119,8 +121,15 @@ paths:
   /v1/identity/accounts:
     post:
       tags: [Identity]
-      summary: Create an operator or SWL account
+      summary: Create a participant account; role grants require separate authority
       operationId: createAccount
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Requires identity.accounts.create. Every new account receives the
+        participant role and remains pending credential setup. Supplying any
+        additional role requires identity.roles.assign and each granted role
+        must be strictly below the actor's current authority. Permanent
+        passwords and client-supplied permission scopes are not accepted.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -132,6 +141,7 @@ paths:
         '201':
           description: Created
           content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }
+        '403': { description: Missing account-create or role-grant authority }
   /v1/identity/accounts/{accountId}/callsigns:
     post:
       tags: [Identity]
@@ -806,7 +816,7 @@ paths:
                 status: { type: string, enum: [ACTIVE, DEACTIVATED] }
                 anonymize: { type: boolean, description: Anonymize and revoke sessions when status is DEACTIVATED }
                 password: { type: string, minLength: 12, writeOnly: true }
-                roles: { type: array, items: { $ref: '#/components/schemas/RoleAssignment' } }
+                roles: { type: array, items: { $ref: '#/components/schemas/RoleGrant' } }
       responses: { '200': { description: Updated account and active roles } }
   /v1/identity/roles/{roleCode}:
     patch:
@@ -840,7 +850,7 @@ paths:
               properties:
                 roles:
                   type: array
-                  items: { $ref: '#/components/schemas/RoleAssignment' }
+                  items: { $ref: '#/components/schemas/RoleGrant' }
       responses: { '200': { description: Updated account and active roles } }
   /v1/identity/accounts/{accountId}/primary-callsign:
     put:
@@ -1439,15 +1449,18 @@ components:
         displayName: { type: string }
         email: { type: string, format: email, nullable: true }
         participationType: { type: string, enum: [OPERATOR, SWL] }
-        status: { type: string, enum: [ACTIVE, DEACTIVATED] }
+        status: { type: string, enum: [PENDING_SETUP, ACTIVE, DEACTIVATED] }
         callsigns: { type: array, items: { type: object } }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleAssignment' } }
     RegisterAccount:
-      allOf:
-        - $ref: '#/components/schemas/CreateAccount'
-        - type: object
-          required: [email, password]
-          properties:
-            password: { type: string, minLength: 12, format: password }
+      type: object
+      required: [displayName, email, password, participationType]
+      additionalProperties: false
+      properties:
+        displayName: { type: string, minLength: 1 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 12, format: password, writeOnly: true }
+        participationType: { type: string, enum: [OPERATOR, SWL] }
     Login:
       type: object
       required: [email, password]
@@ -1478,14 +1491,26 @@ components:
         metadata: { type: object }
     RoleAssignment:
       type: object
-      required: [role]
+      required: [id, accountId, role, createdAt]
       properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
         role: { type: string }
-        code: { type: string, description: Role-definition code accepted by administrative role replacement }
+        scopes: { type: array, items: { type: string } }
         programmeSlug: { type: string }
         jurisdiction: { type: string }
         entityType: { type: string }
-        scopes: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        validTo: { type: string, format: date-time, nullable: true }
+    RoleGrant:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role: { type: string, pattern: '^[A-Z][A-Z0-9_]*$' }
+        programmeSlug: { type: string }
+        jurisdiction: { type: string }
+        entityType: { type: string }
     AdminRoleDefinition:
       type: object
       required: [code, name]
@@ -1496,12 +1521,17 @@ components:
         scopes: { type: array, uniqueItems: true, items: { type: string } }
     CreateAccount:
       type: object
-      required: [displayName, participationType]
+      required: [displayName, email, participationType]
+      additionalProperties: false
       properties:
         displayName: { type: string, minLength: 1 }
         email: { type: string, format: email }
         participationType: { type: string, enum: [OPERATOR, SWL] }
         callsign: { type: string, description: Optional initial callsign for an operator }
+        roles:
+          type: array
+          description: Optional additional role grants; requires identity.roles.assign and strict lower authority.
+          items: { $ref: '#/components/schemas/RoleGrant' }
     AddCallsign:
       type: object
       required: [callsign]
