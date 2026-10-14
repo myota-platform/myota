@@ -1,6 +1,6 @@
 {
   "canonical": "contracts/openapi.yaml",
-  "canonicalSha256": "aa74613bbe391bc0d7be1531ee0bd5324f277e91a375f96bc1ac04ee686c1dbb",
+  "canonicalSha256": "3ff3f8278541e0c4c7d851aef50924a205bec59902f986fd409220f2d76e709e",
   "contractOperations": [
     {
       "method": "GET",
@@ -348,6 +348,11 @@
       "path": "/v1/identity/accounts/{accountId}/primary-callsign"
     },
     {
+      "method": "GET",
+      "operationId": "getAccountProfileImage",
+      "path": "/v1/identity/accounts/{accountId}/profile-image"
+    },
+    {
       "method": "PUT",
       "operationId": "replaceAccountRoleAssignments",
       "path": "/v1/identity/accounts/{accountId}/role-assignments"
@@ -402,7 +407,32 @@
     },
     {
       "method": "GET",
+      "operationId": "getEmailRecipientAddress",
+      "path": "/v1/identity/internal/email-recipients/{accountId}"
+    },
+    {
+      "method": "GET",
       "path": "/v1/identity/me"
+    },
+    {
+      "method": "PATCH",
+      "operationId": "patchIdentityProfile",
+      "path": "/v1/identity/me/profile"
+    },
+    {
+      "method": "DELETE",
+      "operationId": "deleteIdentityProfileImage",
+      "path": "/v1/identity/me/profile-image"
+    },
+    {
+      "method": "GET",
+      "operationId": "getIdentityProfileImage",
+      "path": "/v1/identity/me/profile-image"
+    },
+    {
+      "method": "PUT",
+      "operationId": "putIdentityProfileImage",
+      "path": "/v1/identity/me/profile-image"
     },
     {
       "method": "POST",
@@ -637,6 +667,12 @@
   "serviceRoutes": [
     {
       "file": "identity.py",
+      "method": "DELETE",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
       "method": "GET",
       "path": "/v1/identity/accounts/{accountId}",
       "service": "identity"
@@ -645,6 +681,12 @@
       "file": "identity.py",
       "method": "GET",
       "path": "/v1/identity/accounts/{accountId}/export",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}/profile-image",
       "service": "identity"
     },
     {
@@ -674,13 +716,31 @@
     {
       "file": "identity.py",
       "method": "GET",
+      "path": "/v1/identity/internal/email-recipients/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
       "path": "/v1/identity/me",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/me/profile-image",
       "service": "identity"
     },
     {
       "file": "identity.py",
       "method": "PATCH",
       "path": "/v1/identity/accounts/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PATCH",
+      "path": "/v1/identity/me/profile",
       "service": "identity"
     },
     {
@@ -789,6 +849,12 @@
       "file": "identity.py",
       "method": "PUT",
       "path": "/v1/identity/accounts/{accountId}/role-assignments",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PUT",
+      "path": "/v1/identity/me/profile-image",
       "service": "identity"
     },
     {
@@ -1440,6 +1506,12 @@
       "service": "geodata_routes"
     },
     {
+      "file": "identity.py",
+      "method": "DELETE",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
+    },
+    {
       "file": "programmes.py",
       "method": "DELETE",
       "path": "/v1/programmes/{slug}/entity-types/{categoryCode}",
@@ -1640,6 +1712,12 @@
     {
       "file": "identity.py",
       "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
       "path": "/v1/identity/accounts/{accountId}/roles",
       "service": "identity"
     },
@@ -1664,7 +1742,19 @@
     {
       "file": "identity.py",
       "method": "GET",
+      "path": "/v1/identity/internal/email-recipients/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
       "path": "/v1/identity/me",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/me/profile-image",
       "service": "identity"
     },
     {
@@ -1773,6 +1863,12 @@
       "file": "identity.py",
       "method": "PATCH",
       "path": "/v1/identity/accounts/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PATCH",
+      "path": "/v1/identity/me/profile",
       "service": "identity"
     },
     {
@@ -2211,6 +2307,12 @@
       "file": "identity.py",
       "method": "PUT",
       "path": "/v1/identity/accounts/{accountId}/role-assignments",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PUT",
+      "path": "/v1/identity/me/profile-image",
       "service": "identity"
     },
     {

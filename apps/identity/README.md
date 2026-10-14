@@ -34,6 +34,16 @@ permissions are a strict subset of their current permissions, and cannot
 change their own roles. Invitation and credential setup are still pending the
 email-delivery workstream.
 
+The email worker resolves addresses only through the internal
+`GET /v1/identity/internal/email-recipients/{accountId}` API. Identity issues
+that worker a five-minute token with the fixed `identity.email.resolve` scope
+from the Secret-backed `MYOTA_EMAIL_SERVICE_CLIENT_SECRET`; callers cannot
+select scopes. The endpoint returns only the current deliverable address and
+accepts only active accounts. Missing, pending-setup, deactivated, and
+unaddressable accounts share the same HTTP 404 response. The public Gateway rejects `/v1/identity/internal/`. Deploy must
+provision the client credential as a runtime Secret before the endpoint can be
+used. Addresses must not appear in logs, telemetry, or NATS payloads.
+
 Global operators are exempt from the general per-account/source login-attempt
 throttle so repeated legitimate administrator sign-ins do not lock out the
 platform. The separate temporary account lock after repeated invalid passwords
