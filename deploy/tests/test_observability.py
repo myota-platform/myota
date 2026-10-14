@@ -69,7 +69,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         ]
         self.assertTrue(
             any(
-                "myota_identity_users_total" in expression
+                "myota_identity_users{" in expression
                 for expression in expressions
             )
         )
@@ -88,6 +88,16 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertTrue(
             any(
                 "myota_http_server_requests_total" in expression
+                for expression in expressions
+            )
+        )
+        self.assertTrue(
+            any("myota_programmes{" in expression for expression in expressions)
+        )
+        self.assertFalse(
+            any(
+                "myota_identity_users_total" in expression
+                or "myota_programmes_total" in expression
                 for expression in expressions
             )
         )
