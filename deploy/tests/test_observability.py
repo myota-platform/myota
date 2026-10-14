@@ -29,6 +29,43 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             self.assertEqual(dashboard["timezone"], "utc")
             self.assertIsInstance(dashboard["editable"], bool)
 
+    def test_complete_dashboard_set_matches_between_compose_and_helm(self):
+        def inventory(directory):
+            result = {}
+            for path in directory.rglob("*.json"):
+                data = json.loads(
+                    path.read_text().replace("{{MYOTA_NAMESPACE}}", "myota")
+                )
+                self.assertNotIn(data["uid"], result, path)
+                result[data["uid"]] = data
+            return result
+
+        self.assertEqual(
+            inventory(ROOT / "observability/grafana/dashboards"),
+            inventory(ROOT / "helm/myota/observability/grafana/dashboards"),
+        )
+
+    def test_trace_to_log_query_filters_structured_metadata(self):
+        import yaml
+
+        for prefix in ("observability", "helm/myota/observability"):
+            config = yaml.safe_load(
+                (
+                    ROOT
+                    / prefix
+                    / "grafana/provisioning/datasources/datasources.yml"
+                ).read_text()
+            )
+            tempo = next(
+                d for d in config["datasources"] if d["uid"] == "myota-tempo"
+            )
+            query = tempo["jsonData"]["tracesToLogsV2"]
+            self.assertTrue(query["customQuery"])
+            self.assertFalse(query["filterByTraceID"])
+            self.assertEqual(
+                query["query"], '{$${__tags}} | trace_id="$${__span.traceId}"'
+            )
+
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
             ROOT / "helm/myota/templates/observability.yaml"
@@ -234,7 +271,9 @@ class ObservabilityConfigurationTests(unittest.TestCase):
                 for expression in expressions
             )
         )
-        self.assertIn('severity_text=~"WARN|WARNING|ERROR"', "\n".join(expressions))
+        self.assertIn(
+            'severity_text=~"WARN|WARNING|ERROR"', "\n".join(expressions)
+        )
         # Application namespace is a fixed telemetry resource attribute, not
         # the Kubernetes release namespace. Substitution hid Test failures.
         helm_logs = (
