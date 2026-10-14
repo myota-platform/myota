@@ -1,8 +1,11 @@
-name: Build and publish admin web image
+name: MyOTA deployment checks and image
 
 on:
   push:
     branches: [main, testing, 'feature/**', 'fix/**']
+    paths:
+      - "deploy/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [main, testing]
   workflow_dispatch:
@@ -11,42 +14,42 @@ permissions:
   contents: read
 
 jobs:
-  build-and-publish:
+  test:
+    defaults:
+      run:
+        working-directory: deploy
+    name: Run deployment runtime tests
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: services
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run deployment runtime tests
+        run: python -m unittest discover -s tests -v
+
+  build-and-publish:
+    defaults:
+      run:
+        working-directory: deploy
+    needs: [test]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - myota-service
+          - myota-gateway
     permissions:
       contents: read
       packages: write
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Check formatting for changed frontend files
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: npm run lint
-      - name: Check upload regressions, types and production build
-        run: |
-          npm test
-          npm run typecheck
-          npm run build
-      - name: Install browser regression runtime
-        run: npx playwright install --with-deps chromium
-      - name: Check catalogue dialogs, geometry editing and deletion regressions
-        run: npm run test:e2e
-      - name: Retain isolated browser screenshots and failure evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: catalogue-browser-evidence
-          path: test-results/
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to GitHub Container Registry
@@ -59,7 +62,7 @@ jobs:
       - name: Prepare image tags
         id: image-tags
         env:
-          IMAGE_NAME: ghcr.io/myota-platform/myota-admin-web
+          IMAGE_NAME: ghcr.io/myota-platform/${{ matrix.image }}
         run: |
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             echo "tags=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
@@ -76,7 +79,7 @@ jobs:
       - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./deploy
           push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
           tags: ${{ steps.image-tags.outputs.tags }}
           labels: |

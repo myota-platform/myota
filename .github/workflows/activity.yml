@@ -1,51 +1,48 @@
-name: Web quality
+name: MyOTA activity checks and image
 
 on:
   push:
     branches: [main, testing, 'feature/**', 'fix/**']
+    paths:
+      - "apps/activity/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [main, testing]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  static-check:
-    name: Static checks and tests
+  test-notifications:
+    defaults:
+      run:
+        working-directory: apps/activity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check JavaScript syntax
-        run: node --check web/app.js
-      - name: Test static site structure
-        run: python -m unittest discover -s tests -v
-
-  build-artifact:
-    name: Build static site artifact
-    needs: [static-check]
+      - run: python -m pip install -r requirements.txt
+      - name: Start isolated JetStream broker
+        run: docker run -d --name notification-tests -p 14222:4222 nats:2.10-alpine -js
+      - name: Verify notification replica overlap and service regressions
+        env:
+          NATS_TEST_URL: nats://127.0.0.1:14222
+        run: python -m unittest discover -s tests
+  build-and-publish:
+    defaults:
+      run:
+        working-directory: apps/activity
+    needs: [test-notifications]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Assemble static site
-        run: |
-          mkdir -p dist
-          cp -R web/. dist/
-      - name: Upload immutable CI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: myota-web-${{ github.sha }}
-          path: dist/
-          if-no-files-found: error
-          retention-days: 7
+      - name: Check out source
+        uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to GitHub Container Registry
@@ -58,7 +55,7 @@ jobs:
       - name: Prepare image tags
         id: image-tags
         env:
-          IMAGE_NAME: ghcr.io/myota-platform/myota-web
+          IMAGE_NAME: ghcr.io/myota-platform/myota-activity-service
         run: |
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             echo "tags=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
@@ -72,10 +69,10 @@ jobs:
           else
             echo "tags=${IMAGE_NAME}:ci-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           fi
-      - name: Build and publish static site image
+      - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./apps/activity
           push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
           tags: ${{ steps.image-tags.outputs.tags }}
           labels: |

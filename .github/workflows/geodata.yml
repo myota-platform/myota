@@ -1,8 +1,11 @@
-name: Build and publish geodata service image
+name: MyOTA geodata checks and image
 
 on:
   push:
     branches: [main, testing, 'feature/**', 'fix/**']
+    paths:
+      - "apps/geodata/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [main, testing]
   workflow_dispatch:
@@ -12,6 +15,9 @@ permissions:
 
 jobs:
   test-load-harness:
+    defaults:
+      run:
+        working-directory: apps/geodata
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +28,9 @@ jobs:
         run: node --experimental-vm-modules --test loadtests/tests/geodata-workloads.test.mjs
 
   test-relational-boundaries:
+    defaults:
+      run:
+        working-directory: apps/geodata
     runs-on: ubuntu-latest
     services:
       postgis:
@@ -88,6 +97,9 @@ jobs:
         run: docker rm --force myota-test-nats || true
 
   test-upload-session-recovery:
+    defaults:
+      run:
+        working-directory: apps/geodata
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -150,6 +162,9 @@ jobs:
           docker volume rm myota-seaweedfs-phase2-data || true
 
   build-and-publish:
+    defaults:
+      run:
+        working-directory: apps/geodata
     needs: [test-relational-boundaries, test-load-harness, test-upload-session-recovery]
     runs-on: ubuntu-latest
     permissions:
@@ -187,7 +202,7 @@ jobs:
       - name: Build release or isolated testing image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./apps/geodata
           push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
           tags: ${{ steps.image-tags.outputs.tags }}
           labels: |

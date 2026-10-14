@@ -1,0 +1,48 @@
+name: Monorepo contract checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, testing, 'feature/**', 'fix/**']
+    paths:
+      - "contracts/**"
+      - "apps/**"
+      - "deploy/services/**"
+      - ".github/workflows/contracts.yml"
+  pull_request:
+    branches: [main, testing]
+
+permissions:
+  contents: read
+
+jobs:
+  contract-checks:
+    name: Validate contracts and producer registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install contract check dependencies
+        run: python -m pip install -r contracts/requirements-dev.txt
+      - name: Validate event source references and literals
+        run: python3 contracts/scripts/audit_workspace_event_sources.py --workspace-root .
+      - name: Check event registry and payload schemas
+        run: python3 -m unittest discover -s contracts/tests -v
+      - name: Reject duplicate OpenAPI YAML keys
+        run: ruby contracts/scripts/check_yaml_duplicate_keys.rb contracts/openapi.yaml
+      - name: Validate OpenAPI syntax
+        run: ruby -e 'require "yaml"; YAML.load_file("contracts/openapi.yaml")'
+      - name: Check route inventory and generated clients
+        run: |
+          python3 contracts/scripts/check_contract_phase0.py \
+            --canonical contracts/openapi.yaml \
+            --service-root apps/identity \
+            --service-root apps/programmes \
+            --service-root apps/activity \
+            --service-root apps/geodata \
+            --service-root deploy/services \
+            --semantic-baseline contracts/semantic-duplicates.json \
+            --inventory-out contracts/route-inventory.json
+          python3 contracts/scripts/check_generated_clients.py

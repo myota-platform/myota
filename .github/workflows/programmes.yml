@@ -1,8 +1,11 @@
-name: Build and publish identity service image
+name: MyOTA programmes checks and image
 
 on:
   push:
     branches: [main, testing, 'feature/**', 'fix/**']
+    paths:
+      - "apps/programmes/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [main, testing]
   workflow_dispatch:
@@ -11,21 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Run service tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install test dependencies
-        run: python -m pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run service tests
-        run: python -m unittest discover -s tests -v
-
   build-and-publish:
-    needs: [test]
+    defaults:
+      run:
+        working-directory: apps/programmes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,6 +25,14 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check programme and UTC publication regressions
+        run: |
+          python -m pip install -r requirements.txt
+          TZ=Pacific/Honolulu python -m unittest discover -s tests -v
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to GitHub Container Registry
@@ -45,7 +45,7 @@ jobs:
       - name: Prepare image tags
         id: image-tags
         env:
-          IMAGE_NAME: ghcr.io/myota-platform/myota-identity-service
+          IMAGE_NAME: ghcr.io/myota-platform/myota-programme-service
         run: |
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             echo "tags=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
@@ -62,7 +62,7 @@ jobs:
       - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./apps/programmes
           push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
           tags: ${{ steps.image-tags.outputs.tags }}
           labels: |

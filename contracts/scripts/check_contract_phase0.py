@@ -112,7 +112,7 @@ def contract_routes(path: Path) -> tuple[list[dict[str, str]], list[str]]:
 def service_routes(root: Path) -> list[dict[str, str]]:
     routes: list[dict[str, str]] = []
     for source in sorted(root.rglob("*.py")):
-        if any(part in {".", "__pycache__"} for part in source.parts):
+        if any(part in {"tests", "__pycache__"} for part in source.parts):
             continue
         content = source.read_text(encoding="utf-8", errors="replace")
         for match in REGISTRY_ROUTE.finditer(content):

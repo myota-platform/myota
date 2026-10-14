@@ -18,13 +18,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY = ROOT / "contracts/event-registry.json"
+REGISTRY = ROOT / "event-registry.json"
 OWNER_REPOSITORIES = {
-    "identity-service": "myota-identity-service",
-    "programme-service": "myota-programme-service",
-    "activity-service": "myota-activity-service",
-    "geodata-service": "myota-geodata-service",
-    "operations-service": "myota-operations-service",
+    "identity-service": "apps/identity",
+    "programme-service": "apps/programmes",
+    "activity-service": "apps/activity",
+    "geodata-service": "apps/geodata",
+    
 }
 EVENT_TYPE = re.compile(
     r"^(?:identity|programme|activity|awards|geodata)\."
@@ -87,12 +87,12 @@ def main() -> int:
         matched = False
         for source in sources:
             repository_name, separator, relative_path = source.partition("/")
-            if not separator or repository_name != expected_repository:
+            if not separator or not source.startswith(expected_repository + "/"):
                 errors.append(
                     f"{event['eventType']}: source {source!r} does not match owner {owner}"
                 )
                 continue
-            path = workspace / repository_name / relative_path
+            path = workspace / source
             if not path.is_file() or event["eventType"] not in literal_strings(
                 path
             ):
