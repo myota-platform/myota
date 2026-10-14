@@ -5,7 +5,7 @@ import { apiRequest } from "../lib/api";
 import { myotaClient } from "../lib/myotaClient";
 import {
   hasAnyScope,
-  isGlobalAdministrator,
+  mayGrantRole,
   roleAssignmentPayload,
   type RoleAssignment,
 } from "../lib/adminAccess";
@@ -29,6 +29,7 @@ interface User {
   status: string;
   participationType?: string;
   roles?: RoleAssignment[];
+  scopes?: string[];
 }
 interface Permission {
   code: string;
@@ -83,14 +84,30 @@ const roleForm = reactive({
   description: "",
   scopes: [] as string[],
 });
-const canAssignRoles = computed(
-  () =>
-    hasAnyScope(store.account, "identity.roles.assign") &&
-    (isGlobalAdministrator(store.account) ||
-      !selectedAccount.value?.roles?.some((role) =>
-        ["GLOBAL_OPERATOR", "GLOBAL_ADMIN"].includes(role.role),
-      )),
-);
+const canAssignRoles = computed(() => {
+  const target = selectedAccount.value;
+  if (
+    !target ||
+    !hasAnyScope(store.account, "identity.roles.assign") ||
+    target.id === store.account?.id
+  )
+    return false;
+  return true;
+});
+function canEditRole(role: Role): boolean {
+  const selected = accountForm.selectedRoles.includes(role.code);
+  const alreadyAssigned = selectedAccount.value?.roles?.some(
+    (assignment) => assignment.role === role.code,
+  );
+  return (
+    Boolean(selectedAccount.value) &&
+    selectedAccount.value?.id !== store.account?.id &&
+    (mayGrantRole(store.account, role) || Boolean(selected && alreadyAssigned))
+  );
+}
+function effectivePermissions(account: User): string[] {
+  return [...new Set(account.scopes || [])].sort();
+}
 const roleEditable = computed(
   () => canManageRoles.value && !selectedRole.value?.system,
 );
@@ -272,7 +289,7 @@ onMounted(load);
               {{ account.participationType || "Operator" }}</small
             ><small>{{
               account.roles?.map((role) => role.role).join(", ") ||
-              "No admin roles"
+              "No assigned roles"
             }}</small></span
           >
           <span
@@ -324,12 +341,16 @@ onMounted(load);
           <fieldset class="wide" :disabled="!canAssignRoles">
             <legend>Assigned roles</legend>
             <p class="field-help">
+              Effective permissions:
+              {{ effectivePermissions(selectedAccount).join(", ") || "None" }}
+            </p>
+            <p class="field-help">
               Existing programme, jurisdiction and category restrictions remain
               unchanged. Newly added roles are unscoped grants.
             </p>
             <p v-if="!canAssignRoles" class="read-only-note">
               Role assignments are read-only for your current permissions or
-              this global account.
+              because this is your account.
             </p>
             <div class="checkbox-grid">
               <label v-for="role in roles" :key="role.code" class="check-field">
@@ -337,16 +358,17 @@ onMounted(load);
                   v-model="accountForm.selectedRoles"
                   type="checkbox"
                   :value="role.code"
-                  :disabled="
-                    !isGlobalAdministrator(store.account) &&
-                    ['GLOBAL_OPERATOR', 'GLOBAL_ADMIN'].includes(role.code)
-                  "
+                  :disabled="!canEditRole(role)"
                 />
                 <span
                   >{{ role.name
                   }}<small class="field-help"
                     >{{ role.code }} ·
-                    {{ role.scopes.join(", ") || "No permissions" }}</small
+                    {{ role.scopes.join(", ") || "No permissions" }}
+                    <template v-if="!mayGrantRole(store.account, role)">
+                      · you may remove an existing assignment but cannot grant
+                      it
+                    </template></small
                   ></span
                 >
               </label>

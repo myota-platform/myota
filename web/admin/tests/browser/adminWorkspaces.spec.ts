@@ -1,7 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Isolated API responses qualify presentation and save payloads, not live mutations.
-async function fixtures(page: Page, scopes = ["*"], failure = "") {
+async function fixtures(
+  page: Page,
+  scopes = ["*"],
+  failure = "",
+  staleAuthorization = false,
+  targetIdentityAdmin = false,
+) {
   const requests: string[] = [];
   const writes: Array<{ path: string; body: any }> = [];
   const errors: string[] = [];
@@ -28,6 +34,7 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
         entityType: "TRAIL",
       },
     ],
+    scopes: ["geodata.review", "identity.me"],
   };
   const roles = [
     {
@@ -48,7 +55,26 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
       system: true,
       scopes: ["*"],
     },
+    {
+      code: "IDENTITY_ADMIN",
+      name: "Identity administrator",
+      system: true,
+      scopes: [
+        "identity.admin",
+        "identity.accounts.create",
+        "identity.roles.assign",
+        "identity.audit.read",
+      ],
+    },
   ];
+  if (targetIdentityAdmin)
+    user.roles.push({
+      role: "IDENTITY_ADMIN",
+      programmeSlug: null,
+      jurisdiction: null,
+      entityType: null,
+      scopes: roles.find((role) => role.code === "IDENTITY_ADMIN")?.scopes,
+    });
   const category: any = {
     code: "PARK",
     label: "Existing park",
@@ -71,9 +97,10 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
     status: "PUBLISHED",
   };
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript(() =>
-    localStorage.setItem("myota_admin_access", "isolated-token"),
-  );
+  await page.addInitScript(() => {
+    localStorage.setItem("myota_admin_access", "isolated-token");
+    localStorage.setItem("myota_admin_refresh", "isolated-refresh-token");
+  });
   await page.route("https://tile.openstreetmap.org/**", (route) =>
     route.abort(),
   );
@@ -88,13 +115,27 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
         status: 503,
         json: { detail: "Temporarily unavailable; retry." },
       });
+    if (staleAuthorization && path === "/v1/identity/admin/roles")
+      return route.fulfill({
+        status: 403,
+        json: { detail: "Permission changed." },
+      });
     let body: any = { items: [], total: 0 };
-    if (path === "/v1/identity/me")
+    if (path === "/v1/identity/auth/refresh")
+      body = {
+        accessToken: "refreshed-isolated-token",
+        refreshToken: "refreshed-isolated-refresh-token",
+      };
+    else if (path === "/v1/identity/me")
       body = {
         id: "admin",
         displayName: "Test administrator",
         email: "admin@example.test",
-        scopes,
+        scopes:
+          staleAuthorization &&
+          requests.filter((requested) => requested === path).length > 1
+            ? ["identity.me"]
+            : scopes,
       };
     else if (path === "/v1/programmes") body = { items: programmes, total: 2 };
     else if (path === "/v1/identity/admin/accounts")
@@ -109,7 +150,12 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
       Object.assign(user, {
         ...payload,
         roles: payload.roles
-          ? payload.roles.map((role: any) => ({ ...role, role: role.code }))
+          ? payload.roles.map((role: any) => ({
+              ...role,
+              role: role.code,
+              scopes: roles.find((definition) => definition.code === role.code)
+                ?.scopes,
+            }))
           : user.roles,
       });
       delete user.password;
@@ -220,6 +266,12 @@ test("user saves retain scoped assignments, clear password and keep roles in sep
   await expect(page.getByLabel("Display name", { exact: true })).toHaveValue(
     "Existing user",
   );
+  await expect(
+    page.getByText(/Effective permissions: geodata.review/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: /GLOBAL_OPERATOR/ }),
+  ).toBeDisabled();
   await page.getByLabel("Display name", { exact: true }).fill("Renamed user");
   await page.getByRole("button", { name: "Save user", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("User saved");
@@ -255,6 +307,75 @@ test("user saves retain scoped assignments, clear password and keep roles in sep
   await expect(page.getByRole("button", { name: "Save role" })).toHaveCount(0);
   await page.getByRole("button", { name: /Custom reader/ }).click();
   await expect(page.getByLabel("Display name", { exact: true })).toBeEnabled();
+  expect(state.errors).toEqual([]);
+});
+
+test("the current account cannot edit its own role assignments", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/v1/identity/me", async (route) =>
+    route.fulfill({
+      json: {
+        id: "user-1",
+        displayName: "Existing user",
+        email: "fixture@example.test",
+        scopes: ["*"],
+      },
+    }),
+  );
+  await page.goto("/identity");
+  await page.getByRole("button", { name: /Existing user/ }).click();
+  await expect(page.getByText(/because this is your account/)).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: /Geodata reviewer/ }),
+  ).toBeDisabled();
+});
+
+test("an administrator can revoke an existing higher role without regranting it", async ({
+  page,
+}) => {
+  const state = await fixtures(
+    page,
+    ["identity.me", "identity.admin", "identity.roles.assign"],
+    "",
+    false,
+    true,
+  );
+  await page.goto("/identity");
+  await page.getByRole("button", { name: /Existing user/ }).click();
+  const identityRole = page.getByRole("checkbox", {
+    name: /Identity administrator/,
+  });
+  await expect(identityRole).toBeChecked();
+  await identityRole.uncheck();
+  await page.getByRole("button", { name: "Save user", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("User saved");
+  expect(state.writes[0].body.roles).not.toContainEqual(
+    expect.objectContaining({ code: "IDENTITY_ADMIN" }),
+  );
+  expect(state.writes[0].body.roles).toContainEqual(
+    expect.objectContaining({ code: "GEO_APPROVER" }),
+  );
+});
+
+test("a forbidden request refreshes current Identity permissions and denies the stale page", async ({
+  page,
+}) => {
+  const state = await fixtures(
+    page,
+    ["identity.me", "identity.admin", "identity.roles.assign"],
+    "",
+    true,
+  );
+  await page.goto("/identity");
+  await expect(page).toHaveURL(/\/access-denied$/);
+  await expect(
+    page.getByRole("heading", { name: "Access not available" }),
+  ).toBeVisible();
+  expect(
+    state.requests.filter((path) => path === "/v1/identity/me").length,
+  ).toBeGreaterThanOrEqual(2);
   expect(state.errors).toEqual([]);
 });
 

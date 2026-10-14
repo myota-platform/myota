@@ -11,6 +11,7 @@ export const useAppStore = defineStore("app", () => {
   const initialized = ref(false);
   const bootstrapWarning = ref("");
   let bootstrapPending: Promise<boolean> | null = null;
+  let authorizationRefreshPending: Promise<void> | null = null;
   let sessionRevision = 0;
   const signedIn = computed(() => Boolean(account.value));
 
@@ -94,6 +95,48 @@ export const useAppStore = defineStore("app", () => {
     clearSession();
   }
 
+  async function refreshAuthorization(): Promise<void> {
+    if (!account.value) return;
+    if (authorizationRefreshPending) return authorizationRefreshPending;
+    const revision = sessionRevision;
+    const pending = (async () => {
+      try {
+        const resolved = await apiRequest<Account>(
+          "/v1/identity/me",
+          {},
+          false,
+        );
+        if (revision === sessionRevision) {
+          account.value = resolved;
+          apiStatus.value = "connected";
+          bootstrapWarning.value = "";
+        }
+      } catch (cause) {
+        if (revision !== sessionRevision) return;
+        if (cause instanceof ApiError && [401, 403].includes(cause.status))
+          signOut();
+        else {
+          apiStatus.value = "unavailable";
+          bootstrapWarning.value =
+            "Unable to refresh account permissions. Some actions may remain unavailable until the API responds.";
+        }
+      }
+    })();
+    authorizationRefreshPending = pending;
+    try {
+      await pending;
+    } finally {
+      if (authorizationRefreshPending === pending)
+        authorizationRefreshPending = null;
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("myota:authorization-denied", () => {
+      void refreshAuthorization();
+    });
+  }
+
   return {
     account,
     programmes,
@@ -103,6 +146,7 @@ export const useAppStore = defineStore("app", () => {
     signedIn,
     bootstrapWarning,
     bootstrap,
+    refreshAuthorization,
     loadProgrammes,
     signIn,
     signOut,
