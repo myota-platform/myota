@@ -5,23 +5,21 @@ mutable GHCR `testing` tags pinned to immutable digests. A digest change alters
 the pod template and causes a Kubernetes rollout after Fleet reconciles the
 values commit.
 
-The scheduled controller lives in the organization
-[`myota-platform/.github`](https://github.com/myota-platform/.github/blob/main/.github/workflows/sync-testing-image-digests.yml)
-default branch because GitHub schedules run only from a repository's default
-branch. Every five minutes it reads the published testing image digests,
-opens a digest-only PR to Deploy `testing`, and enables auto-merge after the
-protected branch checks pass. Its short-lived GitHub App token is restricted
-to this repository with Contents and Pull requests read/write permissions; it
-does not require enabling Actions PR creation in the organization.
+The scheduled controller lives in the MyOTA monorepo at
+[`.github/workflows/sync-testing-image-digests.yml`](https://github.com/myota-platform/myota/blob/main/.github/workflows/sync-testing-image-digests.yml).
+It runs every five minutes or by manual dispatch, resolves each published
+`testing` tag to an immutable digest, and opens a digest-only PR against
+`myota/testing`. The old copy in the organization `.github` repository has
+been removed. The monorepo workflow uses a short-lived GitHub App token limited
+to this repository with Contents and Pull requests write permissions.
 
-To activate polling, configure `TESTING_DIGEST_APP_ID` as a repository
-variable and `TESTING_DIGEST_APP_PRIVATE_KEY` as a repository Actions secret
-in `.github`. Install the App on `myota-deploy` only. Until both values are
-present, scheduled runs emit a warning and skip. The current test image update
-merged as Deploy PR [#49](https://github.com/myota-platform/myota-deploy/pull/49)
-at commit [`393adb4`](https://github.com/myota-platform/myota-deploy/commit/393adb40b0fd6e9ae071ac612cbb4ad67fbb0348);
-Fleet reconciled Helm revision 35, all test Deployments are available, and
-both test UIs return HTTP 200.
+Configure `TESTING_DIGEST_APP_ID` as a repository variable and
+`TESTING_DIGEST_APP_PRIVATE_KEY` as an Actions secret in `myota`, or make
+them available through organization-level settings that include this
+repository. The workflow skips with a warning when either value is missing.
+After moving the workflow to `main`, no scheduled run has yet been observed;
+run it manually once and verify credential access, digest PR creation, and
+Fleet reconciliation before treating automation as operational.
 
 The test namespace owns independent PostgreSQL databases, JetStream, SeaweedFS,
 and observability storage. Application workloads do not point at the live
@@ -136,16 +134,19 @@ databases on retry.
 
 ## Runtime requirements
 
-The test image digest workflow checks GHCR `testing` tags for the platform
-runtime, gateway, Identity, Programme, Geodata, Activity, Admin Web, and Web
-images. For a changed digest, it opens or updates a PR to `testing`, dispatches
-the branch's Python, runtime image, and Helm checks, and enables auto-merge
-subject to branch protection. This workflow is currently present on `testing`
-but its schedule is inactive until the workflow is released onto default branch
-`main`, and organization policy currently blocks its PR creation. Publishing a
-new tag alone does not yet update this test release. After both gates are
-resolved, Fleet watches `testing` and reconciles the merged digest change. A
-failed check leaves the PR open and the currently deployed image unchanged.
+The digest workflow resolves published testing tags for the platform runtime,
+gateway, Identity, Programme, Geodata, Activity, Admin Web, and Web images.
+When a digest changes, it updates only
+`deploy/helm/myota-test/values-image-digests-testing.yaml`, opens a PR against
+`testing`, and enables auto-merge. The normal pull-request workflows run the
+Python, runtime-image, and Helm checks; branch protection must pass them before
+the PR merges. Fleet then reconciles the new immutable digests in the isolated
+`myota-test` release.
+
+The workflow is in `main`, but its first post-move run has not yet been
+observed. Verify that its App credentials are available to `myota` and that
+the generated PR merges before relying on automatic image updates. Until that
+verification, newly published tags do not update the test release.
 
 Production values remain in `deploy/helm/myota`; this wrapper is a separate
 Helm release and leaves the production namespace and PVCs untouched.
