@@ -48,6 +48,7 @@ myota:
     storageSize: 20Gi
     s3ConfigSecret: myota-test-seaweedfs-s3-config
   objectStorage:
+    profileImageBucket: myota-test-user-profile-images
     profileImageExistingSecret: myota-test-profile-image-s3-auth
   nats:
     persistence:

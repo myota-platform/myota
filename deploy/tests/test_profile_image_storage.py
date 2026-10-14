@@ -141,6 +141,23 @@ class ProfileImageStorageTests(unittest.TestCase):
             image_compose["services"]["identity"]["environment"],
         )
 
+    def test_testing_profile_bucket_matches_its_scoped_identity(self):
+        testing_values = yaml.safe_load(
+            (ROOT / "helm/myota-test/values-testing.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            testing_values["myota"]["objectStorage"]["profileImageBucket"],
+            "myota-test-user-profile-images",
+        )
+        self.assertEqual(
+            testing_values["myota"]["objectStorage"][
+                "profileImageExistingSecret"
+            ],
+            "myota-test-profile-image-s3-auth",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
