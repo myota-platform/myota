@@ -564,6 +564,7 @@ test("Grafana stays inside the Admin UI and renews its expiring auth cookie", as
 }) => {
   let refreshes = 0;
   await page.addInitScript(() => {
+    if (window.top !== window) return;
     const encode = (value: unknown) =>
       btoa(JSON.stringify(value))
         .replace(/=/g, "")
@@ -616,11 +617,15 @@ test("Grafana stays inside the Admin UI and renews its expiring auth cookie", as
   );
   await expect.poll(() => refreshes).toBe(1);
 
-  const cookie = (await page.context().cookies()).find(
-    (item) => item.name === "myota_admin_access",
-  );
-  expect(cookie?.path).toBe("/observability");
-  expect(cookie?.value).toBe(
-    await page.evaluate(() => localStorage.getItem("myota_admin_access")),
-  );
+  await expect
+    .poll(async () => {
+      const cookie = (await page.context().cookies()).find(
+        (item) => item.name === "myota_admin_access",
+      );
+      const token = await page.evaluate(() =>
+        localStorage.getItem("myota_admin_access"),
+      );
+      return cookie?.path === "/observability" && cookie.value === token;
+    })
+    .toBe(true);
 });
