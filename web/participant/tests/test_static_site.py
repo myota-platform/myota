@@ -1,7 +1,6 @@
+import unittest
 from html.parser import HTMLParser
 from pathlib import Path
-import unittest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
@@ -42,7 +41,32 @@ class StaticSiteTests(unittest.TestCase):
 
     def test_expected_site_assets_exist(self):
         self.assertTrue((WEB / "app.js").is_file())
+        self.assertTrue((WEB / "profile-utils.js").is_file())
         self.assertTrue((WEB / "styles.css").is_file())
+
+    def test_profile_editor_has_accessible_crop_and_private_fields(self):
+        entrypoint = WEB / "index.html"
+        parser = _AssetParser()
+        parser.feed(entrypoint.read_text(encoding="utf-8"))
+        self.assertTrue(
+            {
+                "profile-form",
+                "profile-website",
+                "profile-biography",
+                "profile-biography-preview",
+                "profile-image-file",
+                "profile-crop-canvas",
+                "profile-crop-zoom",
+                "profile-image-upload",
+            }.issubset(set(parser.ids))
+        )
+        self.assertEqual(
+            parser.assets[-2:], ["/profile-utils.js", "/app.js"]
+        )
+        markup = entrypoint.read_text(encoding="utf-8")
+        self.assertIn('id="profile-form" class="profile-form" hidden', markup)
+        self.assertIn('id="profile-image-editor" class="profile-image-editor" hidden', markup)
+        self.assertIn('aria-label="Square profile picture crop preview"', markup)
 
 
 if __name__ == "__main__":

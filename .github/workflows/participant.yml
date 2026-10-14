@@ -29,6 +29,10 @@ jobs:
           python-version: '3.12'
       - name: Check JavaScript syntax
         run: node --check web/app.js
+      - name: Check profile utility syntax and safety behavior
+        run: |
+          node --check web/profile-utils.js
+          node --test tests/profile-utils.test.js
       - name: Test static site structure
         run: python -m unittest discover -s tests -v
 
