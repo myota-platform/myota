@@ -18,7 +18,7 @@ providers:
     editable: false
     allowUiUpdates: false
     options:
-      path: /etc/grafana/dashboards/nats
+      path: /etc/grafana/dashboards-nats
 
   - name: K3s
     orgId: 1
@@ -28,4 +28,4 @@ providers:
     editable: false
     allowUiUpdates: false
     options:
-      path: /etc/grafana/dashboards/k3s
+      path: /etc/grafana/dashboards-k3s

@@ -128,6 +128,50 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         )
         self.assertTrue((ROOT / "db/migrations/run.sh").is_file())
 
+    def test_compose_dashboard_providers_have_disjoint_file_roots(self):
+        import yaml
+
+        services = yaml.safe_load((ROOT / "compose.yaml").read_text())[
+            "services"
+        ]
+        mounts = services["grafana"]["volumes"]
+        self.assertNotIn(
+            "./observability/grafana/dashboards:/etc/grafana/dashboards:ro",
+            mounts,
+        )
+        for path in (ROOT / "observability/grafana/dashboards").glob("*.json"):
+            self.assertIn(
+                f"./observability/grafana/dashboards/{path.name}:/etc/grafana/dashboards/{path.name}:ro",
+                mounts,
+            )
+        self.assertIn(
+            "./observability/grafana/dashboards/nats:/etc/grafana/dashboards-nats:ro",
+            mounts,
+        )
+        self.assertIn(
+            "./observability/grafana/dashboards/k3s:/etc/grafana/dashboards-k3s:ro",
+            mounts,
+        )
+        self.assertEqual(
+            yaml.safe_load(
+                (
+                    ROOT
+                    / "observability/grafana/provisioning/dashboards/dashboards.yml"
+                ).read_text()
+            ),
+            yaml.safe_load(
+                (
+                    ROOT
+                    / "helm/myota/observability/grafana/provisioning/dashboards/dashboards.yml"
+                ).read_text()
+            ),
+        )
+
+    def test_compose_application_account_has_jetstream_enabled(self):
+        config = (ROOT / "observability/nats-compose.conf").read_text()
+        self.assertIn("APP: {jetstream: enabled, users:", config)
+        self.assertIn("no_auth_user: myota-app", config)
+
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
             ROOT / "helm/myota/templates/observability.yaml"

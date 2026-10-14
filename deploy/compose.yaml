@@ -563,7 +563,17 @@ services:
       GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./observability/grafana/dashboards/myota-api-performance.json:/etc/grafana/dashboards/myota-api-performance.json:ro
+      - ./observability/grafana/dashboards/myota-application-workflows.json:/etc/grafana/dashboards/myota-application-workflows.json:ro
+      - ./observability/grafana/dashboards/myota-geodata-capacity.json:/etc/grafana/dashboards/myota-geodata-capacity.json:ro
+      - ./observability/grafana/dashboards/myota-logs-failures.json:/etc/grafana/dashboards/myota-logs-failures.json:ro
+      - ./observability/grafana/dashboards/myota-object-storage.json:/etc/grafana/dashboards/myota-object-storage.json:ro
+      - ./observability/grafana/dashboards/myota-outbox-relay.json:/etc/grafana/dashboards/myota-outbox-relay.json:ro
+      - ./observability/grafana/dashboards/myota-postgresql-postgis.json:/etc/grafana/dashboards/myota-postgresql-postgis.json:ro
+      - ./observability/grafana/dashboards/myota-service-health.json:/etc/grafana/dashboards/myota-service-health.json:ro
+      - ./observability/grafana/dashboards/myota-traces.json:/etc/grafana/dashboards/myota-traces.json:ro
+      - ./observability/grafana/dashboards/nats:/etc/grafana/dashboards-nats:ro
+      - ./observability/grafana/dashboards/k3s:/etc/grafana/dashboards-k3s:ro
       - grafana-data:/var/lib/grafana
     depends_on: [prometheus, alertmanager, tempo, loki]
 volumes:
