@@ -52,8 +52,9 @@ security-event state into process memory from the `service_state` JSONB
 snapshot. The relational authentication tables are not yet the runtime source
 of truth, and this snapshot model is not qualified for concurrent Identity
 replicas. The PostgreSQL-authority migration is tracked in the Identity
-workstream. Production secrets remain deployment-managed; do not use the test
-adapter as a production data store.
+workstream. See the current [shared account and role policy record](https://github.com/myota-platform/myota-docs/blob/main/docs/architecture/decisions/0009-identity-accounts-and-role-policy.md).
+Production secrets remain deployment-managed; do not use the test adapter as
+a production data store.
 
 ## Test and run locally
 
