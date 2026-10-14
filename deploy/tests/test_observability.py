@@ -119,6 +119,10 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             self.assertEqual(len(services[name]["command"]), 1)
         migrations = services["migrations"]
         self.assertIn("./db/migrations:/migrations:ro", migrations["volumes"])
+        self.assertIn("./db/bootstrap:/bootstrap:ro", migrations["volumes"])
+        self.assertNotIn(
+            "./db/bootstrap:/migrations/bootstrap:ro", migrations["volumes"]
+        )
         self.assertTrue(
             (ROOT / "db/migrations/core/001_core_baseline.sql").is_file()
         )

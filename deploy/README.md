@@ -315,3 +315,16 @@ stream cutover. The current deployed topology and Fleet/Helm evidence are
 recorded in the [Phase 6 evidence](https://github.com/myota-platform/myota-docs/blob/main/docs/operations/messaging/evidence/phase6-fact-stream-cutover-2026-10-11.md),
 [Phase 5 evidence](https://github.com/myota-platform/myota-docs/blob/main/docs/operations/messaging/evidence/phase5-geodata-work-2026-10-10.md),
 and [migration plan](https://github.com/myota-platform/myota-docs/blob/main/docs/operations/messaging/nats-event-migration-plan.md).
+
+### Compose cold-start prerequisites
+
+The migration runner reads SQL from `/migrations`; bootstrap helper files use
+an independent `/bootstrap` read-only mount. Shell initializers pass one script
+argument to `sh -ec`. Both profile and Loki buckets are created privately with
+the AWS CLI shipped in their initializer image. Runtime endpoint/region
+variables are escaped from host Compose interpolation.
+
+The pinned SeaweedFS entrypoint drops to UID/GID 1000. Its Compose config
+initializer assigns the credential file to that identity and keeps mode 0600;
+do not widen permissions to make startup succeed. Full runtime/restart and
+capacity acceptance remains tracked in [#48](https://github.com/myota-platform/myota/issues/48).
