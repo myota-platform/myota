@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from email_worker import (
+from email_core import (
     EmailCommand,
     InvalidCommand,
     Recipient,
@@ -104,8 +104,8 @@ class EmailWorkerTests(unittest.TestCase):
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 SMTPConfig.from_env({**base, **extra})
 
-    @patch("email_worker.ssl.create_default_context")
-    @patch("email_worker.smtplib.SMTP")
+    @patch("email_core.ssl.create_default_context")
+    @patch("email_core.smtplib.SMTP")
     def test_smtp_uses_starttls_before_authentication(self, smtp_class, tls_context):
         config = SMTPConfig("smtp.example.test", 587, "user", "secret", "starttls", 5)
         parsed = EmailCommand.parse(json.dumps(command()).encode())

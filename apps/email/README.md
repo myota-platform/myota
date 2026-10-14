@@ -6,7 +6,7 @@ worker must resolve the current deliverable address through Identity and must
 not query Identity's database. SMTP is at least once: acceptance by the SMTP
 server followed by a worker crash can cause a duplicate.
 
-`email_worker.py` currently provides strict contract-shaped validation,
+`email_core.py` currently provides strict contract-shaped validation,
 allowlisted escaped message rendering, bounded TLS-only SMTP configuration,
 and a blocking SMTP adapter exposed through an async helper. The NATS durable,
 recipient-resolution endpoint, PostgreSQL delivery/idempotency state, retry
