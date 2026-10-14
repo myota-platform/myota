@@ -39,7 +39,7 @@ datasources:
           matcherType: label
           matcherRegex: trace_id
           datasourceUid: myota-tempo
-          url: '${__value.raw}'
+          url: '$${__value.raw}'
           urlDisplayLabel: View trace
   - name: MyOTA Alertmanager
     uid: myota-alertmanager

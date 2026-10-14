@@ -171,6 +171,18 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertIn("uid: myota-tempo", datasources)
         self.assertIn("datasourceUid: myota-loki", datasources)
 
+    def test_log_to_trace_macro_survives_provisioning_environment_expansion(
+        self,
+    ):
+        for prefix in ("observability", "helm/myota/observability"):
+            config = (
+                ROOT
+                / prefix
+                / "grafana/provisioning/datasources/datasources.yml"
+            ).read_text()
+            self.assertIn("url: '$${__value.raw}'", config)
+            self.assertNotIn("url: '${__value.raw}'", config)
+
     def test_logs_dashboard_uses_bounded_filters_and_privacy_safe_queries(
         self,
     ):
@@ -197,7 +209,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             self.assertEqual(variable["query"], ",".join(options))
         self.assertEqual(
             [option["value"] for option in variables[0]["options"]],
-            ["development", "testing", "production"],
+            ["development", "test", "testing", "production"],
         )
         self.assertTrue(
             all(
@@ -222,7 +234,25 @@ class ObservabilityConfigurationTests(unittest.TestCase):
                 for expression in expressions
             )
         )
-        self.assertIn('severity_text=~"WARNING|ERROR"', "\n".join(expressions))
+        self.assertIn('severity_text=~"WARN|WARNING|ERROR"', "\n".join(expressions))
+        # Application namespace is a fixed telemetry resource attribute, not
+        # the Kubernetes release namespace. Substitution hid Test failures.
+        helm_logs = (
+            ROOT
+            / "helm/myota/observability/grafana/dashboards/myota-logs-failures.json"
+        ).read_text()
+        self.assertNotIn("{{MYOTA_NAMESPACE}}", helm_logs)
+        for expression in expressions:
+            if (
+                expression.startswith("{")
+                or "rate({" in expression
+                or "count_over_time({" in expression
+            ):
+                self.assertIn('service_namespace="myota"', expression)
+        warnings = next(
+            panel for panel in dashboard["panels"] if panel["id"] == 2
+        )
+        self.assertIn("sum by (severity_text)", warnings["targets"][0]["expr"])
         errors_panel = next(
             panel for panel in dashboard["panels"] if panel["id"] == 3
         )
