@@ -48,6 +48,11 @@ def _matches_route(pattern: str, path: str) -> bool:
     )
 
 
+def is_public_gateway_path(path: str) -> bool:
+    """Keep Identity's service-only endpoints off the public Gateway."""
+    return not urlsplit(path).path.startswith("/v1/identity/internal/")
+
+
 def route_template(method: str, path: str) -> str:
     """Return a stable API route label without path identifiers."""
     path = urlsplit(path).path
@@ -209,6 +214,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _proxy(self) -> None:
+        if not is_public_gateway_path(self.path):
+            self._json(404, b'{"error":"route_not_found"}')
+            return
         target = next(
             (
                 (name, port, handler)

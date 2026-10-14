@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import time
+import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
@@ -1635,13 +1636,46 @@ class IdentityHandler(JsonHandler):
         _: JsonHandler, p: dict[str, str]
     ) -> dict[str, Any]:
         body = p["_body"]
-        require(body, "service", "scopes")
-        IdentityHandler._auth(p, scopes=("identity.service.issue",))
+        require(body, "service")
+        if body["service"] == "email-service":
+            require(body, "clientSecret")
+            if set(body) != {"service", "clientSecret"}:
+                raise ValueError(
+                    "email service token requests accept no caller-selected scopes"
+                )
+            expected = os.environ.get("MYOTA_EMAIL_SERVICE_CLIENT_SECRET", "")
+            supplied = body.get("clientSecret")
+            if (
+                len(expected) < 32
+                or not isinstance(supplied, str)
+                or not secrets.compare_digest(
+                    supplied.encode("utf-8"), expected.encode("utf-8")
+                )
+            ):
+                raise PermissionError("service client authentication failed")
+            scopes = ["identity.email.resolve"]
+            claims = {
+                "sub": "service:email-service",
+                "aud": "myota-identity",
+            }
+        else:
+            require(body, "scopes")
+            if "clientSecret" in body:
+                raise ValueError(
+                    "clientSecret is not accepted for this service"
+                )
+            IdentityHandler._auth(p, scopes=("identity.service.issue",))
+            if "identity.email.resolve" in body["scopes"]:
+                raise PermissionError(
+                    "email recipient scope is reserved for email-service"
+                )
+            scopes = body["scopes"]
+            claims = {"sub": f"service:{body['service']}"}
         token = sign_token(
             {
-                "sub": f"service:{body['service']}",
+                **claims,
                 "jti": new_id(),
-                "scp": body["scopes"],
+                "scp": scopes,
                 "iat": epoch(),
                 "exp": epoch() + 300,
                 "tokenType": "service",
@@ -1650,9 +1684,44 @@ class IdentityHandler(JsonHandler):
         )
         IdentityHandler._audit(
             "identity.service-token.issued.v1",
-            {"service": body["service"], "scopes": body["scopes"]},
+            {"service": body["service"], "scopes": scopes},
         )
         return {"accessToken": token, "tokenType": "Bearer", "expiresIn": 300}
+
+    def end_headers(self) -> None:
+        if (
+            self.path.split("?", 1)[0].startswith("/v1/identity/internal/")
+            or self.path.split("?", 1)[0] == "/v1/identity/auth/service-token"
+        ):
+            self.send_header("Cache-Control", "private, no-store")
+        super().end_headers()
+
+    @staticmethod
+    def resolve_email_recipient(
+        _: JsonHandler, p: dict[str, str]
+    ) -> dict[str, Any]:
+        claims = IdentityHandler._auth(p, scopes=("identity.email.resolve",))
+        if (
+            not claims
+            or claims.get("tokenType") != "service"
+            or claims.get("sub") != "service:email-service"
+            or claims.get("aud") != "myota-identity"
+        ):
+            raise PermissionError("email service identity is required")
+        account_id = p.get("accountId", "")
+        try:
+            account_id = str(uuid.UUID(account_id))
+        except (ValueError, AttributeError) as exc:
+            raise KeyError("recipient is unavailable") from exc
+        account = IdentityHandler.store.items.get(account_id)
+        if (
+            not account
+            or account.get("status") != "ACTIVE"
+            or not isinstance(account.get("email"), str)
+            or not account["email"].strip()
+        ):
+            raise KeyError("recipient is unavailable")
+        return {"deliverableAddress": account["email"]}
 
     @staticmethod
     def export_account(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
@@ -1815,6 +1884,10 @@ IdentityHandler.routes = {
         "POST",
         "/v1/identity/auth/service-token",
     ): IdentityHandler.issue_service_token,
+    (
+        "GET",
+        "/v1/identity/internal/email-recipients/{accountId}",
+    ): IdentityHandler.resolve_email_recipient,
     ("GET", "/v1/identity/me"): IdentityHandler.current_account,
     ("PATCH", "/v1/identity/me/profile"): IdentityHandler.update_own_profile,
     (
