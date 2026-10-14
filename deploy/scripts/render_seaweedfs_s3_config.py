@@ -54,7 +54,13 @@ def config_from_environment() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--owner-uid", type=int)
+    parser.add_argument("--owner-gid", type=int)
     args = parser.parse_args()
+    if (args.owner_uid is None) != (args.owner_gid is None):
+        parser.error("owner UID and GID must be supplied together")
+    if args.owner_uid is not None and min(args.owner_uid, args.owner_gid) < 0:
+        parser.error("owner UID and GID must be nonnegative")
     try:
         config = config_from_environment()
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -66,8 +72,10 @@ def main() -> int:
             | getattr(os, "O_NOFOLLOW", 0),
             0o600,
         )
-        os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            os.fchmod(output.fileno(), 0o600)
+            if args.owner_uid is not None:
+                os.fchown(output.fileno(), args.owner_uid, args.owner_gid)
             output.write(json.dumps(config, separators=(",", ":")) + "\n")
     except (OSError, ValueError) as exc:
         parser.error(str(exc))

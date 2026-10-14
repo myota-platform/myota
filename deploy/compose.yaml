@@ -454,7 +454,7 @@ services:
     restart: "no"
     network_mode: none
     entrypoint: ["python3", "/scripts/render_seaweedfs_s3_config.py"]
-    command: ["--output", "/config/s3.json"]
+    command: ["--output", "/config/s3.json", "--owner-uid", "1000", "--owner-gid", "1000"]
     environment:
       MYOTA_OBJECT_STORAGE_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
       MYOTA_OBJECT_STORAGE_SECRET_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
