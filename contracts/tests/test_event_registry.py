@@ -13,18 +13,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from generate_deploy_event_registry import runtime_catalog  # noqa: E402
 
 OWNER_REPOSITORIES = {
-    "identity-service": "myota-identity-service",
-    "programme-service": "myota-programme-service",
-    "activity-service": "myota-activity-service",
-    "geodata-service": "myota-geodata-service",
-    "operations-service": "myota-operations-service",
+    "identity-service": "apps/identity",
+    "programme-service": "apps/programmes",
+    "activity-service": "apps/activity",
+    "geodata-service": "apps/geodata",
+    
 }
 
 
 class EventRegistryTests(unittest.TestCase):
     def test_deploy_routing_catalog_is_generated_from_contract_registry(self):
         registry = json.loads(
-            (ROOT / "contracts/event-registry.json").read_text(
+            (ROOT / "event-registry.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -46,7 +46,7 @@ class EventRegistryTests(unittest.TestCase):
             },
             expected_routes,
         )
-        for repo in ("myota-deploy", "myota-platform"):
+        for repo in ("deploy",):
             checked_in = json.loads(
                 (
                     ROOT.parent / repo / "services/event_registry.json"
@@ -61,7 +61,7 @@ class EventRegistryTests(unittest.TestCase):
         self,
     ):
         registry = json.loads(
-            (ROOT / "contracts/event-registry.json").read_text(
+            (ROOT / "event-registry.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -144,12 +144,12 @@ class EventRegistryTests(unittest.TestCase):
             self.assertTrue(sources)
             self.assertEqual(sources, sorted(set(sources)))
             for source in sources:
-                repository, relative_path = source.split("/", 1)
-                self.assertEqual(
-                    repository, OWNER_REPOSITORIES[event["owner"]]
+                self.assertTrue(
+                    source.startswith(OWNER_REPOSITORIES[event["owner"]] + "/")
                 )
+                relative_path = source[len(OWNER_REPOSITORIES[event["owner"]]) + 1:]
                 self.assertTrue(relative_path.endswith(".py"))
-            schema_path = ROOT / "contracts" / event["schema"]
+            schema_path = ROOT / event["schema"]
             schema = json.loads(schema_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 schema["allOf"][1]["properties"]["eventType"]["const"],
@@ -225,7 +225,7 @@ class EventRegistryTests(unittest.TestCase):
         }.items():
             event = activity_by_type[event_type]
             payload = json.loads(
-                (ROOT / "contracts" / event["schema"]).read_text(
+                (ROOT / event["schema"]).read_text(
                     encoding="utf-8"
                 )
             )["allOf"][1]["properties"]["payload"]
@@ -269,7 +269,7 @@ class EventRegistryTests(unittest.TestCase):
         }.items():
             event = geodata_by_type[event_type]
             payload = json.loads(
-                (ROOT / "contracts" / event["schema"]).read_text(
+                (ROOT / event["schema"]).read_text(
                     encoding="utf-8"
                 )
             )["allOf"][1]["properties"]["payload"]
@@ -305,7 +305,7 @@ class EventRegistryTests(unittest.TestCase):
                 work["schema"],
                 f"schemas/work/{work['workType'].replace('.', '-')}.schema.json",
             )
-            schema_path = ROOT / "contracts" / work["schema"]
+            schema_path = ROOT / work["schema"]
             self.assertTrue(schema_path.is_file())
             schema = json.loads(schema_path.read_text(encoding="utf-8"))
             payload = schema["allOf"][1]["properties"]["payload"]
@@ -317,13 +317,10 @@ class EventRegistryTests(unittest.TestCase):
             for key in ("producerSources", "consumerSources"):
                 self.assertTrue(work[key])
                 for source in work[key]:
-                    repository, relative_path = source.split("/", 1)
-                    self.assertEqual(
-                        repository, OWNER_REPOSITORIES[work["owner"]]
-                    )
                     self.assertTrue(
-                        (ROOT.parent / repository / relative_path).is_file()
+                        source.startswith(OWNER_REPOSITORIES[work["owner"]] + "/")
                     )
+                    self.assertTrue((ROOT.parent / source).is_file())
             if work["owner"] == "activity-service":
                 self.assertEqual(set(payload["properties"]), {"jobId"})
                 self.assertLessEqual(
@@ -346,7 +343,7 @@ class EventRegistryTests(unittest.TestCase):
 
     def test_registered_work_durables_match_deploy_owned_topology(self):
         """Keep the contracts registry and provisioned command filters aligned."""
-        deploy_root = ROOT.parent / "myota-deploy"
+        deploy_root = ROOT.parent / "deploy"
         topology_source = deploy_root / "services/jetstream_topology.py"
         if not topology_source.is_file():
             self.skipTest(
@@ -354,7 +351,7 @@ class EventRegistryTests(unittest.TestCase):
             )
         source = topology_source.read_text(encoding="utf-8")
         registered = json.loads(
-            (ROOT / "contracts/event-registry.json").read_text(
+            (ROOT / "event-registry.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -364,7 +361,7 @@ class EventRegistryTests(unittest.TestCase):
 
     def test_runtime_catalog_contains_registered_target_work_routes(self):
         registry = json.loads(
-            (ROOT / "contracts/event-registry.json").read_text(
+            (ROOT / "event-registry.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -397,7 +394,7 @@ class EventRegistryTests(unittest.TestCase):
         self,
     ):
         registry = json.loads(
-            (ROOT / "contracts/event-registry.json").read_text(
+            (ROOT / "event-registry.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -406,8 +403,8 @@ class EventRegistryTests(unittest.TestCase):
             for event in registry["events"]
             if "activity-notifications-v1" in event["consumerGroups"]
         )
-        activity_root = ROOT.parent / "myota-activity-service"
-        deploy_root = ROOT.parent / "myota-deploy"
+        activity_root = ROOT.parent / "apps/activity"
+        deploy_root = ROOT.parent / "deploy"
         if (
             not (activity_root / "event_consumer.py").is_file()
             or not (deploy_root / "services/outbox_worker.py").is_file()
@@ -485,7 +482,7 @@ class EventRegistryTests(unittest.TestCase):
 
     def test_work_payloads_are_bounded_database_references(self):
         registry = json.loads(
-            (ROOT / "contracts/event-registry.json").read_text(
+            (ROOT / "event-registry.json").read_text(
                 encoding="utf-8"
             )
         )

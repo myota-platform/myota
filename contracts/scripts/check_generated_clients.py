@@ -29,8 +29,8 @@ REQUIRED = {
 
 ROOT = Path(__file__).resolve().parents[1]
 targets = [
-    ROOT / "contracts/typescript/myotaClient.ts",
-    ROOT / "contracts/python/myota_client.py",
+    ROOT / "typescript/myotaClient.ts",
+    ROOT / "python/myota_client.py",
 ]
 names = {
     targets[0]: REQUIRED,

@@ -8,9 +8,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY = ROOT / "contracts/event-registry.json"
-SCHEMA_DIR = ROOT / "contracts/schemas/events"
-WORK_SCHEMA_DIR = ROOT / "contracts/schemas/work"
+REGISTRY = ROOT / "event-registry.json"
+SCHEMA_DIR = ROOT / "schemas/events"
+WORK_SCHEMA_DIR = ROOT / "schemas/work"
 
 
 def event_schema(event: dict) -> dict:
@@ -21,7 +21,7 @@ def event_schema(event: dict) -> dict:
         properties["payload"] = event["payloadSchema"]
     schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": f"https://github.com/myota-platform/myota-contracts/contracts/schemas/events/{safe}.schema.json",
+        "$id": f"https://github.com/myota-platform/myota/contracts/schemas/events/{safe}.schema.json",
         "title": f"{event_type} envelope v1",
         "allOf": [
             {"$ref": "../event-envelope.schema.json"},
@@ -69,7 +69,7 @@ def main() -> None:
     WORK_SCHEMA_DIR.mkdir(parents=True, exist_ok=True)
     expected_events = set()
     for event in events:
-        path = ROOT / "contracts" / event["schema"]
+        path = ROOT / event["schema"]
         expected_events.add(path)
         path.write_text(
             json.dumps(event_schema(event), indent=2) + "\n",
@@ -77,7 +77,7 @@ def main() -> None:
         )
     expected_work = set()
     for item in work:
-        path = ROOT / "contracts" / item["schema"]
+        path = ROOT / item["schema"]
         expected_work.add(path)
         path.write_text(
             json.dumps(work_schema(item), indent=2) + "\n",
