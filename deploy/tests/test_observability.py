@@ -108,7 +108,6 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         )
         chart_dashboard_path = (
             ROOT
-            / "deploy"
             / "helm"
             / "myota"
             / "observability"
@@ -120,7 +119,6 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         chart_dashboard = json.loads(chart_dashboard_path.read_text())
         deployment_template = (
             ROOT
-            / "deploy"
             / "helm"
             / "myota"
             / "templates"
