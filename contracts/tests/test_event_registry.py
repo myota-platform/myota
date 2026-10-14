@@ -7,9 +7,12 @@ import sys
 import unittest
 from pathlib import Path
 
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from audit_workspace_event_sources import EVENT_TYPE, SOURCE_REPOSITORIES  # noqa: E402
 from generate_deploy_event_registry import runtime_catalog  # noqa: E402
 
 OWNER_REPOSITORIES = {
@@ -115,7 +118,7 @@ class EventRegistryTests(unittest.TestCase):
                 "awards.request.created.v1",
             },
         )
-        self.assertEqual(len(registry["work"]), 10)
+        self.assertEqual(len(registry["work"]), 11)
         self.assertEqual(
             {
                 event_type
@@ -278,16 +281,16 @@ class EventRegistryTests(unittest.TestCase):
             )
         for work in registry["work"]:
             self.assertEqual(work["class"], "work-command")
-            owner_namespace = (
-                "activity"
-                if work["owner"] == "activity-service"
-                else "geodata"
-            )
-            stream = (
-                registry["activityWorkStream"]
-                if owner_namespace == "activity"
-                else registry["geodataWorkStream"]
-            )
+            owner_namespace = {
+                "activity-service": "activity",
+                "geodata-service": "geodata",
+                "identity-service": "email",
+            }[work["owner"]]
+            stream = {
+                "activity": registry["activityWorkStream"],
+                "geodata": registry["geodataWorkStream"],
+                "email": registry["emailWorkStream"],
+            }[owner_namespace]
             self.assertEqual(work["stream"], stream)
             self.assertEqual(work["subject"], f"myota.work.{work['workType']}")
             self.assertEqual(
@@ -317,10 +320,23 @@ class EventRegistryTests(unittest.TestCase):
             for key in ("producerSources", "consumerSources"):
                 self.assertTrue(work[key])
                 for source in work[key]:
-                    self.assertTrue(
-                        source.startswith(OWNER_REPOSITORIES[work["owner"]] + "/")
+                    expected_root = (
+                        "apps/email"
+                        if work["workType"] == "email.send.v1"
+                        and key == "consumerSources"
+                        else OWNER_REPOSITORIES[work["owner"]]
                     )
-                    self.assertTrue((ROOT.parent / source).is_file())
+                    self.assertTrue(
+                        source.startswith(expected_root + "/")
+                    )
+                    source_path = ROOT.parent / source
+                    if (
+                        work.get("status") == "contract-only-proposed"
+                        and key == "consumerSources"
+                    ):
+                        self.assertFalse(source_path.is_file())
+                    else:
+                        self.assertTrue(source_path.is_file())
             if work["owner"] == "activity-service":
                 self.assertEqual(set(payload["properties"]), {"jobId"})
                 self.assertLessEqual(
@@ -356,8 +372,12 @@ class EventRegistryTests(unittest.TestCase):
             )
         )
         for work in registered["work"]:
-            self.assertIn(f'"{work["durable"]}"', source)
-            self.assertIn(f'"{work["subject"]}"', source)
+            if work.get("status") == "contract-only-proposed":
+                self.assertNotIn(f'"{work["durable"]}"', source)
+                self.assertNotIn(f'"{work["subject"]}"', source)
+            else:
+                self.assertIn(f'"{work["durable"]}"', source)
+                self.assertIn(f'"{work["subject"]}"', source)
 
     def test_runtime_catalog_contains_registered_target_work_routes(self):
         registry = json.loads(
@@ -486,7 +506,7 @@ class EventRegistryTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        self.assertEqual(len(registry["work"]), 10)
+        self.assertEqual(len(registry["work"]), 11)
         for work in registry["work"]:
             payload = work["payloadSchema"]
             self.assertFalse(payload["additionalProperties"])
@@ -511,6 +531,110 @@ class EventRegistryTests(unittest.TestCase):
                     self.assertLessEqual(
                         definition.get("maxLength", 0), 80, name
                     )
+
+    def test_email_work_contract_is_bounded_and_excludes_delivery_secrets(self):
+        self.assertTrue(EVENT_TYPE.fullmatch("email.send.v1"))
+        self.assertIn("apps/email", SOURCE_REPOSITORIES)
+        registry = json.loads(
+            (ROOT / "event-registry.json").read_text(encoding="utf-8")
+        )
+        work = next(
+            item for item in registry["work"]
+            if item["workType"] == "email.send.v1"
+        )
+        self.assertEqual(work["subject"], "myota.work.email.send.v1")
+        self.assertEqual(work["stream"], "MYOTA_EMAIL_WORK")
+        self.assertEqual(work["durable"], "email-delivery-v1")
+        self.assertEqual(work["workIdSource"], "myota_identity.email_delivery_intent.id")
+        self.assertEqual(work["maxPayloadBytes"], 8192)
+        self.assertIn("at-least-once", work["deliverySemantics"])
+        self.assertIn("ambiguous SMTP acceptance can duplicate", work["deliverySemantics"])
+        payload = work["payloadSchema"]
+        self.assertFalse(payload["additionalProperties"])
+        self.assertEqual(
+            set(payload["required"]),
+            {"recipientAccountId", "templateId", "templateData"},
+        )
+        self.assertEqual(
+            set(payload["properties"]["templateId"]["enum"]),
+            {
+                "account-created-participant.v1",
+                "account-created-administrator.v1",
+            },
+        )
+        variants = payload["allOf"][0]["oneOf"]
+        self.assertEqual(len(variants), 2)
+        variant_fields = {
+            variant["properties"]["templateId"]["const"]: set(
+                variant["properties"]["templateData"]["properties"]
+            )
+            for variant in variants
+        }
+        self.assertEqual(
+            variant_fields,
+            {
+                "account-created-participant.v1": {"displayName"},
+                "account-created-administrator.v1": {
+                    "createdAccountName", "createdAccountRole"
+                },
+            },
+        )
+        serialized = json.dumps(payload).lower()
+        for prohibited in (
+            "emailaddress", "password", "credential", "token", "smtp",
+            "html", "messagebody", "subjectline",
+        ):
+            self.assertNotIn(prohibited, serialized)
+        self.assertEqual(
+            registry["emailWorkStream"], "MYOTA_EMAIL_WORK"
+        )
+        self.assertEqual(
+            registry["emailWorkSubjectPrefix"], "myota.work.email."
+        )
+        generated = json.loads(
+            (ROOT / work["schema"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(generated["x-max-payload-bytes"], 8192)
+        validator = Draft202012Validator(
+            payload, format_checker=FormatChecker()
+        )
+        Draft202012Validator.check_schema(payload)
+        valid_participant = {
+            "recipientAccountId": "00000000-0000-4000-8000-000000000001",
+            "templateId": "account-created-participant.v1",
+            "templateData": {"displayName": "Participant"},
+        }
+        valid_administrator = {
+            "recipientAccountId": "00000000-0000-4000-8000-000000000002",
+            "templateId": "account-created-administrator.v1",
+            "templateData": {
+                "createdAccountName": "New participant",
+                "createdAccountRole": "PARTICIPANT",
+            },
+        }
+        validator.validate(valid_participant)
+        validator.validate(valid_administrator)
+        invalid_payloads = (
+            {
+                **valid_participant,
+                "templateData": {
+                    "displayName": "Participant",
+                    "emailAddress": "person@example.test",
+                },
+            },
+            {
+                **valid_participant,
+                "templateId": "account-created-administrator.v1",
+            },
+            {
+                **valid_participant,
+                "templateId": "account-created-v2.v1",
+            },
+            {**valid_participant, "messageBody": "arbitrary content"},
+        )
+        for invalid in invalid_payloads:
+            with self.assertRaises(ValidationError):
+                validator.validate(invalid)
 
 
 if __name__ == "__main__":

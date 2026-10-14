@@ -723,6 +723,14 @@
         "geodata"
       ]
     },
+    "email.send.v1": {
+      "subject": "myota.work.email.send.v1",
+      "stream": "MYOTA_EMAIL_WORK",
+      "durable": "email-delivery-v1",
+      "producers": [
+        "identity"
+      ]
+    },
     "geodata.location-enrichment.v1": {
       "subject": "myota.work.geodata.location-enrichment.v1",
       "stream": "MYOTA_GEODATA_WORK",

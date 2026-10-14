@@ -40,8 +40,8 @@ row.
 
 ## Selected target contract (Phase 1 contract/topology complete)
 
-The [machine-readable registry](event-registry.json) enumerates the Phase 0
-event facts and selected work commands. Per-event schemas are under
+The [machine-readable registry](event-registry.json) enumerates 68 Phase 0
+domain facts and selected work commands. Per-event schemas are under
 [`schemas/`](schemas/). All schemas constrain the immutable outer envelope and
 event identity. Source-derived fact schemas cover 19 Identity, 12 Programme,
 10 Activity, and 27 Geodata events. They are derived from producer call sites in
@@ -81,7 +81,7 @@ PostgreSQL remains the source of truth; JetStream is a bounded delivery/replay
 window, not a permanent event archive. The ADR-0008 target is not yet the live
 deployment.
 
-The ten registered work schemas constrain each payload to small identifiers
+The 11 registered work schemas constrain each payload to small identifiers
 that reference the owning database's authoritative job row. The six Activity
 commands use `activity_job.id` for both `workId` and payload `jobId`. Geodata
 commands reference the import run, processing queue, deletion job, or enrichment
@@ -90,6 +90,23 @@ handler. QSO batches, ADIF bytes, award fact snapshots, candidate arrays, and
 source documents remain in the database or object store. These are target
 contracts; transaction coupling, redelivery idempotency, and recovery behavior
 must be implemented and tested before a path publishes them.
+
+The email work contract adds `email.send.v1` on `myota.work.email.send.v1`,
+targeting `MYOTA_EMAIL_WORK` and the shared `email-delivery-v1` durable. Its
+payload contains an Identity account UUID and one of two versioned
+account-created template IDs. The participant template accepts only a bounded
+display name; the administrator template accepts a bounded created-account
+name and role. Each template ID is immutable: an incompatible variable change
+requires a new versioned ID, and retired IDs remain rejected rather than being
+silently reinterpreted. The serialized envelope limit is 8 KiB. Delivery uses
+explicit acknowledgement after durable outcome; transient failures retry
+under deployment-bounded policy, while unknown versions/templates must never
+be success-acked. SMTP delivery is at least once because acceptance can be
+ambiguous after a worker failure. Addresses are resolved by the email worker
+through a least-privilege Identity API. Recovery and verification tokens,
+passwords, credentials, raw addresses, arbitrary HTML, and message bodies are
+excluded. These are proposed contract definitions pending the Identity outbox
+and email consumer work; they do not authorize runtime publication.
 
 ```json
 {
