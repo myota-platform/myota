@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 VALUES = ROOT / "deploy/helm/myota/values-image-digests.yaml"
 IMAGES = {
     "identity": "ghcr.io/myota-platform/myota-identity-service:latest",
