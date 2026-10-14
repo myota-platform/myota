@@ -66,6 +66,39 @@ class ObservabilityConfigurationTests(unittest.TestCase):
                 query["query"], '{$${__tags}} | trace_id="$${__span.traceId}"'
             )
 
+    def test_compose_loki_bucket_init_uses_the_shipped_cli_and_runtime_credentials(
+        self,
+    ):
+        import yaml
+
+        services = yaml.safe_load((ROOT / "compose.yaml").read_text())[
+            "services"
+        ]
+        init = services["loki-bucket-init"]
+        self.assertIn("aws-cli", init["image"])
+        self.assertIn("aws s3api head-bucket", init["command"])
+        self.assertIn("aws s3api create-bucket", init["command"])
+        self.assertNotIn("mc ", init["command"])
+        self.assertIn("--acl private", init["command"])
+        self.assertIn("$$AWS_ENDPOINT_URL", init["command"])
+        self.assertIn("$$AWS_DEFAULT_REGION", init["command"])
+        self.assertEqual(
+            init["environment"]["AWS_ACCESS_KEY_ID"],
+            services["loki"]["environment"]["AWS_ACCESS_KEY_ID"],
+        )
+        self.assertEqual(
+            init["environment"]["AWS_SECRET_ACCESS_KEY"],
+            services["loki"]["environment"]["AWS_SECRET_ACCESS_KEY"],
+        )
+        self.assertIn(
+            "${MYOTA_OBJECT_STORAGE_SECRET_KEY",
+            init["environment"]["AWS_SECRET_ACCESS_KEY"],
+        )
+        self.assertEqual(
+            services["loki"]["depends_on"]["loki-bucket-init"]["condition"],
+            "service_completed_successfully",
+        )
+
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
             ROOT / "helm/myota/templates/observability.yaml"

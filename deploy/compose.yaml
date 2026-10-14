@@ -420,13 +420,16 @@ services:
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
     command: >-
-      mc alias set seaweed http://seaweedfs:8333 "$AWS_ACCESS_KEY_ID"
-      "$AWS_SECRET_ACCESS_KEY" &&
-      mc mb --ignore-existing seaweed/myota-loki
+      if aws s3api head-bucket --bucket myota-loki
+      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+      >/dev/null 2>&1; then exit 0; fi;
+      aws s3api create-bucket --bucket myota-loki --acl private
+      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
     environment:
-      AWS_ACCESS_KEY_ID: myota-s3
-      AWS_SECRET_ACCESS_KEY: myota-s3-dev-only
+      AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
       AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: ${MYOTA_OBJECT_STORAGE_ENDPOINT:-http://seaweedfs:8333}
     depends_on:
       seaweedfs: {condition: service_healthy}
   profile-image-bucket-init:
@@ -435,10 +438,10 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command: >-
       if aws s3api head-bucket --bucket myota-user-profile-images
-      --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION"
+      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
       >/dev/null 2>&1; then exit 0; fi;
       aws s3api create-bucket --bucket myota-user-profile-images --acl private
-      --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION"
+      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
     environment:
       AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
       AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
@@ -467,8 +470,8 @@ services:
     restart: unless-stopped
     command: ["-config.file=/etc/loki/config.yaml", "-config.expand-env=true"]
     environment:
-      AWS_ACCESS_KEY_ID: myota-s3
-      AWS_SECRET_ACCESS_KEY: myota-s3-dev-only
+      AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
     volumes:
       - ./observability/loki.yaml:/etc/loki/config.yaml:ro
       - loki-data:/var/loki
