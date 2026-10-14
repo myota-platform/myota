@@ -1,0 +1,323 @@
+image:
+  repository: ghcr.io/myota-platform/myota-service
+  tag: latest
+  pullPolicy: IfNotPresent
+imageRollout:
+  # Updated by image-digest-sync. Configured digests are used in image
+  # references, so rollout and runtime content resolve to the same artifact.
+  digests:
+    identity: ""
+    programmes: ""
+    geodata: ""
+    activity: ""
+    gateway: ""
+    adminWeb: ""
+    web: ""
+    platform: ""
+gateway:
+  imageRepository: ghcr.io/myota-platform/myota-gateway
+  imageTag: ""
+  serviceType: ClusterIP
+  port: 8080
+  proxyUploadTimeoutSeconds: 3600
+adminWeb:
+  enabled: true
+  imageRepository: ghcr.io/myota-platform/myota-admin-web
+  imageTag: ""
+  serviceType: ClusterIP
+  port: 8080
+  servicePort: 8090
+  gatewayUpstream: myota-gateway:8080
+web:
+  enabled: false
+  imageRepository: ghcr.io/myota-platform/myota-web
+  imageTag: ""
+  port: 8080
+  servicePort: 8080
+ingress:
+  enabled: false
+  # Use "traefik" for Traefik's IngressRoute CRD, or "kubernetes" for a
+  # standard networking.k8s.io/v1 Ingress resource.
+  provider: kubernetes
+  className: traefik
+  entryPoints:
+    - websecure
+  # Public API gateway hostname; independently configurable per environment.
+  host: api.myota.top
+  # Administration UI hostname; independently configurable per environment.
+  adminHost: admin.myota.top
+  # Participant-facing Web UI hostname; empty disables its route.
+  webHost: ""
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: myota-api-tls
+    certResolver: ""
+  adminTls:
+    enabled: false
+    secretName: ""
+    certResolver: ""
+services:
+  identity:
+    internalUrl: http://myota-identity:8001
+    imageRepository: ghcr.io/myota-platform/myota-identity-service
+    imageTag: ""
+    port: 8001
+  programmes:
+    imageRepository: ghcr.io/myota-platform/myota-programme-service
+    imageTag: ""
+    port: 8002
+  geodata:
+    imageRepository: ghcr.io/myota-platform/myota-geodata-service
+    imageTag: ""
+    port: 8003
+    replicas: 1
+    dbPoolMax: 8
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    importWorkers: 1
+  activity:
+    imageRepository: ghcr.io/myota-platform/myota-activity-service
+    imageTag: ""
+    port: 8004
+    # Internal cluster URL used by geodata for deletion-impact checks.
+    internalUrl: http://myota-activity:8004
+    replicas: 3
+    dbPoolMax: 12
+    httpMaxWorkers: 64
+activityWorkers:
+  enabled: true
+  replicas: 2
+  dbPoolMax: 4
+  # Keep enabled only while legacy API replicas may write jobs without an outbox.
+  legacyReconciliationEnabled: true
+activityNotifications:
+  enabled: true
+  replicas: 1
+activityAdifRetention:
+  enabled: true
+  schedule: "47 3 * * *"
+  retentionDays: 15
+  batchSize: 500
+geodataImportProcessing:
+  enabled: true
+  replicas: 1
+  # Keep worker scaling independent from API scaling. The shared durable
+  # consumer and DB lease make two replicas safe; higher counts need evidence.
+  maxReplicas: 2
+  dbPoolMax: 4
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  maxAckPending: 4
+  maxDeliveries: 100
+  deletionReconcileSeconds: 15
+  batchSize: 100
+geodataApiAutoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+  scaleUpStabilizationSeconds: 30
+  scaleDownStabilizationSeconds: 300
+geodataApiAvailability:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  topologySpread:
+    enabled: true
+geodataConnectionBudget:
+  # PostgreSQL's upstream default, verified on the current K3s geo database.
+  maxConnections: 100
+  # Keep this reserve for migrations, operations and manual/maintenance work.
+  reservedConnections: 40
+  outboxPoolMax: 10
+geodataImportRetention:
+  enabled: true
+  schedule: "17 3 * * *"
+  retentionDays: 30
+  batchSize: 100
+objectStorage:
+  endpoint: http://myota-seaweedfs:8333
+  publicEndpoint: ""
+  awardAssetBucket: myota-award-assets
+  awardSignatureBucket: myota-award-signatures
+  certificateBucket: myota-certificates
+  adifBucket: myota-adif
+  geodataImportBucket: myota-geodata-imports
+  existingSecret: myota-s3-auth
+  accessKeyKey: access-key
+  secretKeyKey: secret-key
+seaweedfs:
+  enabled: false
+  image: chrislusf/seaweedfs:latest
+  storageSize: 20Gi
+  storageClassName: ""
+  metricsPort: 9324
+geodataPipeline:
+  enabled: true
+  locationEnrichment:
+    enabled: true
+    existingSecret: myota-geodata-enrichment
+    apiKeyKey: api-key
+    language: en
+    # Increment after creating or rotating the external Secret so Fleet rolls
+    # both geodata pods and reloads the environment variable.
+    rolloutRevision: "1"
+  maxImportFeatures: 5000
+  maxCoordinates: 50000
+  maxBodyBytes: "1073741824"
+  maxUploadBytes: "1073741824"
+  tileCacheTtlSeconds: 60
+  importer:
+    enabled: false
+    schedule: "0 * * * *"
+    image: ghcr.io/myota-platform/myota-service:latest
+geodataLoadTestCleanup:
+  # Production load-test writes are never enabled by default. Set enabled and
+  # allowProductionCleanup only for a planned run with a dedicated admin.
+  enabled: false
+  allowProductionCleanup: false
+postgres:
+  enabled: false
+  image: postgres:16-alpine
+  postgisImage: postgis/postgis:16-3.4
+  coreStorageSize: 10Gi
+  activityStorageSize: 50Gi
+  geoStorageSize: 100Gi
+  storageClassName: ""
+  resources: {}
+  coreHost: myota-core-postgres
+  corePort: 5432
+  activityHost: myota-activity-postgres
+  activityPort: 5432
+  geoHost: myota-geo-postgis
+  geoPort: 5432
+  coreDatabase: myota_core
+  activityDatabase: myota_activity
+  geoDatabase: myota_geo
+  existingSecret: myota-postgres
+migrations:
+  waitImage: postgres:16-alpine
+  waitTimeoutSeconds: 1800
+auth:
+  environment: production
+  existingSecret: myota-auth
+  maintenanceEnabled: true
+  accessTokenSeconds: 1800
+nats:
+  image: nats:2.10-alpine
+  url: nats://myota-nats:4222
+  systemAccount:
+    username: surveyor
+    existingSecret: myota-nats-surveyor-auth
+  persistence:
+    enabled: true
+    storageSize: 8Gi
+    storageClassName: ""
+  # Explicit caps fit below the 8 GiB local-path PVC, which has no enforced quota.
+  jetstream:
+    maxFileStoreBytes: "7516192768"
+    maxMemoryStoreBytes: "1073741824"
+jetstreamProvisioner:
+  # Remains disabled by default; enable only in a host-specific rollout.
+  enabled: false
+  confirmedMigrationGate: false
+  migrateEventsStream: false
+  scope: all
+  imageRepository: ""
+  imageTag: ""
+  capacity:
+    eventsMaxBytes: ""
+    eventsMaxMessages: ""
+    eventsMaxMessageBytes: ""
+    activityWorkMaxAgeSeconds: ""
+    activityWorkMaxBytes: ""
+    activityWorkMaxMessages: ""
+    activityWorkMaxMessageBytes: ""
+    geodataWorkMaxAgeSeconds: ""
+    geodataWorkMaxBytes: ""
+    geodataWorkMaxMessages: ""
+    geodataWorkMaxMessageBytes: ""
+outbox:
+  enabled: true
+  maxAttempts: 12
+  maxMessageBytes: "1048576"
+  metricsPort: 9108
+observability:
+  enabled: true
+  storageClassName: ""
+  loki:
+    image: grafana/loki:3.7.8
+    bucketInitImage: public.ecr.aws/aws-cli/aws-cli:2.27.41
+    servicePort: 3100
+    workingStorageSize: 2Gi
+    bucketName: myota-loki
+    retentionPeriod: 336h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 750m
+        memory: 768Mi
+  otelCollector:
+    image: otel/opentelemetry-collector-contrib:0.135.0
+    servicePort: 4317
+    metricsPort: 8889
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+  kubeStateMetrics:
+    image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.1
+    resources:
+      requests:
+        cpu: 30m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  natsSurveyor:
+    enabled: true
+    image: natsio/nats-surveyor:0.9.11
+    port: 7777
+    scrapeInterval: 15s
+    existingSecret: myota-nats-surveyor-auth
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  tempo:
+    image: grafana/tempo:2.6.1
+    servicePort: 3200
+    storageSize: 10Gi
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    servicePort: 9090
+    storageSize: 10Gi
+    retention: 15d
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    servicePort: 9093
+    storageSize: 1Gi
+  grafana:
+    image: grafana/grafana:11.2.2
+    servicePort: 3000
+    storageSize: 1Gi
+resources: {}

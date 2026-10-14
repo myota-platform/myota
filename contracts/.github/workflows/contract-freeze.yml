@@ -1,0 +1,229 @@
+name: Contract freeze checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python-quality:
+    uses: myota-platform/.github/.github/workflows/python-quality.yml@main
+
+  phase-0:
+    name: Reconcile OpenAPI and runtime route registries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out canonical contracts
+        uses: actions/checkout@v4
+        with:
+          path: myota-contracts
+
+      - name: Check out deployment runtime registries
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-deploy
+          path: myota-deploy
+          token: ${{ github.token }}
+
+      - name: Check out geodata service runtime routes
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-geodata-service
+          path: myota-geodata-service
+          token: ${{ github.token }}
+
+      - name: Check out identity event producers
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-identity-service
+          path: myota-identity-service
+          token: ${{ github.token }}
+
+      - name: Check out programme event producers
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-programme-service
+          path: myota-programme-service
+          token: ${{ github.token }}
+
+      - name: Check out activity event producers
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-activity-service
+          path: myota-activity-service
+          token: ${{ github.token }}
+
+      - name: Check out operations event producers
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-operations-service
+          path: myota-operations-service
+          token: ${{ github.token }}
+
+      - name: Check out platform contract mirror
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-platform
+          path: myota-platform
+          token: ${{ github.token }}
+
+      - name: Check out deployment route registry for the contract target branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-deploy
+          path: myota-target/myota-deploy
+          ref: ${{ github.base_ref == 'testing' && 'testing' || 'main' }}
+          token: ${{ github.token }}
+
+      - name: Check out geodata route registry for the contract target branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-geodata-service
+          path: myota-target/myota-geodata-service
+          ref: ${{ github.base_ref == 'testing' && 'testing' || 'main' }}
+          token: ${{ github.token }}
+
+      - name: Check out platform contract mirror for the contract target branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-platform
+          path: myota-target/myota-platform
+          ref: ${{ github.base_ref == 'testing' && 'testing' || 'main' }}
+          token: ${{ github.token }}
+
+      - name: Check out identity runtime for the contract target branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-identity-service
+          path: myota-target/myota-identity-service
+          ref: ${{ github.base_ref == 'testing' && 'testing' || 'main' }}
+          token: ${{ github.token }}
+
+      - name: Check out programme runtime for the contract target branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-programme-service
+          path: myota-target/myota-programme-service
+          ref: ${{ github.base_ref == 'testing' && 'testing' || 'main' }}
+          token: ${{ github.token }}
+
+      - name: Check out activity runtime for the contract target branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-activity-service
+          path: myota-target/myota-activity-service
+          ref: ${{ github.base_ref == 'testing' && 'testing' || 'main' }}
+          token: ${{ github.token }}
+
+      - name: Check out operations historical source records
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/myota-operations-service
+          path: myota-target/myota-operations-service
+          ref: main
+          token: ${{ github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Audit source-owned runtime mirrors
+        working-directory: myota-contracts
+        run: |
+          mkdir -p ../myota-target/myota-contracts
+          cp -a . ../myota-target/myota-contracts/
+          python3 scripts/audit_runtime_mirrors.py ../myota-target
+
+      - name: Audit registered event producer sources
+        working-directory: myota-contracts
+        run: >-
+          python3 scripts/audit_workspace_event_sources.py
+          --workspace-root ..
+
+      - name: Check event registry and payload schemas
+        working-directory: myota-contracts
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Verify platform contracts mirror
+        working-directory: myota-contracts
+        run: |
+          cmp contracts/event-registry.json ../myota-platform/contracts/event-registry.json
+          cmp scripts/generate_deploy_event_registry.py ../myota-platform/scripts/generate_deploy_event_registry.py
+
+      - name: Regenerate event and work schemas
+        working-directory: myota-contracts
+        run: |
+          python3 scripts/generate_event_registry.py
+          git diff --exit-code -- contracts/schemas
+
+      - name: Regenerate deploy and platform event-routing catalogs
+        working-directory: myota-contracts
+        run: |
+          python3 scripts/generate_deploy_event_registry.py \
+            --deploy-root ../myota-deploy \
+            --platform-root ../myota-platform
+          git -C ../myota-deploy diff --exit-code -- services/event_registry.json
+          git -C ../myota-platform diff --exit-code -- services/event_registry.json
+          cmp ../myota-deploy/services/outbox_worker.py ../myota-platform/services/outbox_worker.py
+          cmp ../myota-deploy/services/outbox_routing.py ../myota-platform/services/outbox_routing.py
+          cmp ../myota-deploy/services/outbox_admin.py ../myota-platform/services/outbox_admin.py
+          cmp ../myota-deploy/services/outbox_worker.py ../myota-platform/services/outbox_worker.py
+          cmp ../myota-activity-service/event_consumer.py ../myota-platform/services/event_consumer.py
+          cmp ../myota-activity-service/event_consumer.py ../myota-deploy/services/event_consumer.py
+          cmp ../myota-activity-service/activity_notification_consumer.py ../myota-platform/services/activity_notification_consumer.py
+          cmp ../myota-activity-service/activity_notification_consumer.py ../myota-deploy/services/activity_notification_consumer.py
+          grep -F 'prometheus-client>=0.21,<1' ../myota-platform/requirements.txt
+          cmp ../myota-activity-service/activity_repository.py ../myota-platform/services/activity_repository.py
+          cmp ../myota-activity-service/activity_repository.py ../myota-deploy/services/activity_repository.py
+          cmp ../myota-activity-service/activity_notification_topology.py ../myota-platform/services/activity_notification_topology.py
+          cmp ../myota-activity-service/activity_notification_topology.py ../myota-deploy/services/activity_notification_topology.py
+          cmp ../myota-activity-service/redrive_notification_dead_letter.py ../myota-platform/services/redrive_notification_dead_letter.py
+          cmp ../myota-activity-service/redrive_notification_dead_letter.py ../myota-deploy/services/redrive_notification_dead_letter.py
+          cmp ../myota-deploy/deploy/helm/myota/templates/activity-notification-topology.yaml ../myota-platform/deploy/helm/myota/templates/activity-notification-topology.yaml
+          cmp ../myota-deploy/observability/otel-collector.yaml ../myota-platform/observability/otel-collector.yaml
+          grep -F 'MyOTAPostgreSQLMonitoringUnavailableCore' ../myota-deploy/observability/rules.yml
+          grep -F 'MyOTANATSSurveyorUnavailable' ../myota-platform/observability/rules.yml
+          cmp ../myota-geodata-service/import_retention.py ../myota-deploy/services/import_retention.py
+          cmp ../myota-geodata-service/import_retention.py ../myota-platform/services/import_retention.py
+          cmp ../myota-deploy/deploy/helm/myota/templates/deployment.yaml ../myota-platform/deploy/helm/myota/templates/deployment.yaml
+          # Database-specific migration histories have been consolidated into
+          # owner-managed baselines. Keep the synchronized Deploy/Platform
+          # copies of those active baselines byte-identical; retired numbered
+          # migration files are intentionally absent from both trees.
+          cmp ../myota-deploy/db/migrations/core/001_core_baseline.sql ../myota-platform/db/migrations/core/001_core_baseline.sql
+          cmp ../myota-deploy/db/migrations/activity/001_activity_baseline.sql ../myota-platform/db/migrations/activity/001_activity_baseline.sql
+          cmp ../myota-deploy/db/migrations/geo/001_geodata_baseline.sql ../myota-platform/db/migrations/geo/001_geodata_baseline.sql
+
+      - name: Self-test duplicate YAML key checker
+        working-directory: myota-contracts
+        run: ruby scripts/check_yaml_duplicate_keys.rb --self-test
+
+      - name: Reject duplicate OpenAPI mapping keys
+        working-directory: myota-contracts
+        run: ruby scripts/check_yaml_duplicate_keys.rb contracts/openapi.yaml
+
+      - name: Validate YAML syntax
+        working-directory: myota-contracts
+        run: ruby -e 'require "yaml"; YAML.load_file("contracts/openapi.yaml"); YAML.load_file("contracts/semantic-duplicates.json")'
+
+      - name: Check frozen contract and route inventory
+        working-directory: myota-contracts
+        run: >-
+          python3 scripts/check_contract_phase0.py
+          --canonical contracts/openapi.yaml
+          --mirror openapi.yaml
+          --mirror ../myota-target/myota-platform/contracts/openapi.yaml
+          --service-root ../myota-target/myota-deploy/services
+          --service-root ../myota-target/myota-geodata-service
+          --semantic-baseline contracts/semantic-duplicates.json
+          --inventory-out contracts/route-inventory.json
+
+      - name: Ensure generated inventory is committed
+        working-directory: myota-contracts
+        run: git diff --exit-code -- contracts/route-inventory.json
+
+      - name: Check checked-in typed clients
+        working-directory: myota-contracts
+        run: python3 scripts/check_generated_clients.py

@@ -1,0 +1,517 @@
+"""JetStream ACK/retry checks against an isolated disposable broker."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import unittest
+import uuid
+from unittest.mock import patch
+
+import psycopg
+from nats.aio.msg import Msg
+from nats.js.api import (
+    AckPolicy,
+    ConsumerConfig,
+    RetentionPolicy,
+    StorageType,
+    StreamConfig,
+)
+
+from geodata import GeoHandler
+from geodata_import_worker import (
+    ACK_WAIT_SECONDS,
+    MAX_ACK_PENDING,
+    MAX_DELIVERIES,
+    _consume,
+    _event_key,
+    _recover_expired_work_dispatches,
+)
+from geodata_store import GeodataStore
+
+
+DATABASE_URL = os.environ.get("GEO_TEST_DATABASE_URL")
+NATS_URL = os.environ.get("MYOTA_NATS_TEST_URL")
+
+
+@unittest.skipUnless(
+    DATABASE_URL and NATS_URL,
+    "isolated PostGIS and JetStream services are required",
+)
+class JetStreamWorkerDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        from nats.aio.client import Client as NATS
+
+        self.store = GeodataStore()
+        self.store.dsn = str(DATABASE_URL)
+        self.store.hydrate()
+        self.store_patch = patch.object(GeoHandler, "store", self.store)
+        self.store_patch.start()
+
+        self.nc = NATS()
+        await self.nc.connect(str(NATS_URL), name="myota-geodata-test")
+        self.js = self.nc.jetstream()
+        suffix = uuid.uuid4().hex[:16]
+        self.stream = f"MYOTA_TEST_{suffix.upper()}"
+        self.subject = f"myota.geodata.test.{suffix}"
+        self.consumer = f"geodata-test-{suffix}"
+        await self.js.add_stream(
+            config=StreamConfig(
+                name=self.stream,
+                subjects=[self.subject],
+                storage=StorageType.MEMORY,
+                retention=RetentionPolicy.WORK_QUEUE,
+            )
+        )
+        await self.js.add_consumer(
+            self.stream,
+            config=ConsumerConfig(
+                durable_name=self.consumer,
+                filter_subject=self.subject,
+                ack_policy=AckPolicy.EXPLICIT,
+                ack_wait=ACK_WAIT_SECONDS,
+                max_deliver=MAX_DELIVERIES,
+                max_ack_pending=MAX_ACK_PENDING,
+            ),
+        )
+        self.stop_event = asyncio.Event()
+        self.tasks: list[asyncio.Task[None]] = []
+
+    async def asyncTearDown(self) -> None:
+        self.stop_event.set()
+        for task in self.tasks:
+            if not task.done():
+                task.cancel()
+        if self.tasks:
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+        if self.nc.is_connected:
+            # The stream is private to this test and the CI broker itself is
+            # disposable. Close immediately instead of waiting for the pull
+            # subscription's drain timeout; the job removes the broker after
+            # the suite, along with this in-memory test stream.
+            await self.nc.close()
+        with self.store.transaction() as connection:
+            connection.execute(
+                "DELETE FROM consumer_processed_event WHERE consumer=%s",
+                (self.consumer,),
+            )
+            connection.execute(
+                "DELETE FROM consumer_checkpoint WHERE consumer=%s",
+                (self.consumer,),
+            )
+        self.store.close()
+        self.store_patch.stop()
+
+    def _event(self) -> dict[str, str]:
+        return {
+            "envelopeVersion": 1,
+            "workId": str(uuid.uuid4()),
+            "workType": "geodata.test.delivery.v1",
+            "createdAt": "2026-10-10T12:00:00Z",
+            "producer": "geodata",
+            "payload": {},
+        }
+
+    def test_work_envelope_uses_stable_work_id_and_type(self) -> None:
+        message = self._event()
+        self.assertEqual(
+            _event_key(message), (message["workId"], message["workType"])
+        )
+
+    def test_stale_owner_rows_recreate_commands_through_outbox_once(
+        self,
+    ) -> None:
+        import_id = str(uuid.uuid4())
+        queue_id = str(uuid.uuid4())
+        deletion_id = str(uuid.uuid4())
+        entity_id = str(uuid.uuid4())
+        entity_type_id = str(uuid.uuid4())
+        programme_id = str(uuid.uuid4())
+        with self.store.transaction() as connection:
+            connection.execute(
+                "INSERT INTO import_run(id,adapter_code,source_metadata,status,"
+                "work_dispatched_at) VALUES (%s,'MANUAL','{}'::jsonb,'PROCESSING',"
+                "now()-interval '10 minutes')",
+                (import_id,),
+            )
+            connection.execute(
+                "INSERT INTO geodata_import_processing_queue(id,import_run_id,"
+                "candidate_ids,target_status,requested_by,status,lease_until,"
+                "work_dispatched_at) VALUES (%s,%s,'[]'::jsonb,'CANDIDATE',"
+                "'phase5-test','PROCESSING',NULL,now()-interval '10 minutes')",
+                (queue_id, import_id),
+            )
+            connection.execute(
+                "INSERT INTO geodata_control_record(kind,id,payload,updated_at) "
+                "VALUES ('entityDeletionJobs',%s,%s::jsonb,now()-interval '10 minutes')",
+                (
+                    deletion_id,
+                    json.dumps(
+                        {
+                            "status": "PROCESSING",
+                            "leaseUntil": "2026-10-10T00:00:00Z",
+                        }
+                    ),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO entity_type(id,programme_id,code,label,geometry_kind) "
+                "VALUES (%s,%s,'PHASE5_TEST','Phase 5 test','POINT')",
+                (entity_type_id, programme_id),
+            )
+            connection.execute(
+                "INSERT INTO geodata_entity(id,programme_id,entity_type_id,name,geom,"
+                "public_properties,location_work_dispatched_at) "
+                "VALUES (%s,%s,%s,'Phase 5 test',"
+                "ST_SetSRID(ST_MakePoint(-5.99,37.39),4326),%s::jsonb,"
+                "now()-interval '10 minutes')",
+                (
+                    entity_id,
+                    programme_id,
+                    entity_type_id,
+                    json.dumps(
+                        {
+                            "locationEnrichmentRequestId": str(uuid.uuid4()),
+                            "locationEnrichmentGeometryHash": "a" * 64,
+                            "locationEnrichmentStatus": "QUEUED",
+                            "locationEnrichmentOnlyMissing": True,
+                            "locationEnrichmentReason": "PHASE5_TEST",
+                        }
+                    ),
+                ),
+            )
+
+        recovered = _recover_expired_work_dispatches()
+        self.assertEqual(
+            recovered,
+            {"preprocessing": 1, "promotion": 1, "deletion": 1, "location": 1},
+        )
+        self.assertEqual(
+            _recover_expired_work_dispatches(),
+            {"preprocessing": 0, "promotion": 0, "deletion": 0, "location": 0},
+        )
+        with self.store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT event_type,aggregate_id,payload FROM outbox_event "
+                "WHERE aggregate_id = ANY(%s)",
+                ([import_id, queue_id, deletion_id, entity_id],),
+            ).fetchall()
+            self.assertEqual(len(rows), 4)
+            by_type = {row[0]: (row[1], row[2]) for row in rows}
+            self.assertEqual(
+                by_type["geodata.import.recovered.v1"][1]["importRunId"],
+                import_id,
+            )
+            self.assertEqual(
+                by_type["geodata.import.processing.recovered.v1"][1][
+                    "queueId"
+                ],
+                queue_id,
+            )
+            location = by_type[
+                "geodata.entity.location-enrichment-requested.v1"
+            ][1]
+            self.assertEqual(location["geometryHash"], "a" * 64)
+            self.assertEqual(location["reason"], "PHASE5_TEST")
+            connection.execute(
+                "DELETE FROM outbox_event WHERE aggregate_id = ANY(%s)",
+                ([import_id, queue_id, deletion_id, entity_id],),
+            )
+            connection.execute(
+                "DELETE FROM geodata_control_record WHERE kind=%s AND id=%s",
+                ("entityDeletionJobs", deletion_id),
+            )
+            connection.execute(
+                "DELETE FROM geodata_entity WHERE id=%s", (entity_id,)
+            )
+            connection.execute(
+                "DELETE FROM entity_type WHERE id=%s", (entity_type_id,)
+            )
+            connection.execute(
+                "DELETE FROM import_run WHERE id=%s", (import_id,)
+            )
+
+    async def _start_consumer(self, handler) -> None:
+        self.tasks.append(
+            asyncio.create_task(
+                _consume(
+                    self.js,
+                    self.consumer,
+                    self.subject,
+                    handler,
+                    self.stop_event,
+                )
+            )
+        )
+        await asyncio.sleep(0)
+        if self.tasks[-1].done():
+            self.tasks[-1].result()
+
+    async def test_ack_pending_clears_after_handler_success(self) -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+        acked = asyncio.Event()
+
+        async def handler(_event: dict[str, str]) -> None:
+            started.set()
+            await release.wait()
+
+        original_ack = Msg.ack
+
+        async def tracked_ack(message: Msg, *args, **kwargs):
+            result = await original_ack(message, *args, **kwargs)
+            acked.set()
+            return result
+
+        with patch.object(Msg, "ack", tracked_ack):
+            await self._start_consumer(handler)
+            await self.js.publish(
+                self.subject, json.dumps(self._event()).encode()
+            )
+            await asyncio.wait_for(started.wait(), timeout=10)
+
+            pending = await self.js.consumer_info(self.stream, self.consumer)
+            self.assertEqual(pending.num_ack_pending, 1)
+
+            release.set()
+            await asyncio.wait_for(acked.wait(), timeout=10)
+
+        settled = await self.js.consumer_info(self.stream, self.consumer)
+        self.assertEqual(settled.num_ack_pending, 0)
+        self.assertEqual(settled.num_pending, 0)
+
+    async def test_database_connection_failure_naks_and_recovers_without_false_ack(
+        self,
+    ) -> None:
+        calls = 0
+        acked = asyncio.Event()
+        original_ack = Msg.ack
+
+        async def handler(_event: dict[str, str]) -> None:
+            nonlocal calls
+            calls += 1
+            dsn = (
+                "postgresql://127.0.0.1:1/unavailable"
+                if calls == 1
+                else str(DATABASE_URL)
+            )
+            connection = psycopg.connect(dsn, connect_timeout=1)
+            try:
+                connection.execute("SELECT 1").fetchone()
+            finally:
+                connection.close()
+
+        async def tracked_ack(message: Msg, *args, **kwargs):
+            result = await original_ack(message, *args, **kwargs)
+            acked.set()
+            return result
+
+        with patch.object(Msg, "ack", tracked_ack):
+            with patch("geodata_import_worker.RETRY_DELAY_SECONDS", 0):
+                await self._start_consumer(handler)
+                await self.js.publish(
+                    self.subject, json.dumps(self._event()).encode()
+                )
+                await asyncio.wait_for(acked.wait(), timeout=10)
+
+        self.assertEqual(calls, 2)
+        info = await self.js.consumer_info(self.stream, self.consumer)
+        self.assertEqual(info.num_ack_pending, 0)
+        self.assertEqual(info.num_pending, 0)
+
+    async def test_long_handler_heartbeats_past_ack_wait(self) -> None:
+        started = asyncio.Event()
+        acked = asyncio.Event()
+        original_ack = Msg.ack
+
+        async def handler(_event: dict[str, str]) -> None:
+            started.set()
+            await asyncio.sleep(2.2)
+
+        async def tracked_ack(message: Msg, *args, **kwargs):
+            result = await original_ack(message, *args, **kwargs)
+            acked.set()
+            return result
+
+        await self.js.delete_consumer(self.stream, self.consumer)
+        await self.js.add_consumer(
+            self.stream,
+            config=ConsumerConfig(
+                durable_name=self.consumer,
+                filter_subject=self.subject,
+                ack_policy=AckPolicy.EXPLICIT,
+                ack_wait=1.5,
+                max_deliver=MAX_DELIVERIES,
+                max_ack_pending=MAX_ACK_PENDING,
+            ),
+        )
+        with patch("geodata_import_worker.ACK_WAIT_SECONDS", 3):
+            with patch.object(Msg, "ack", tracked_ack):
+                await self._start_consumer(handler)
+                await self.js.publish(
+                    self.subject, json.dumps(self._event()).encode()
+                )
+                await asyncio.wait_for(started.wait(), timeout=10)
+                await asyncio.sleep(1.2)
+                info = await self.js.consumer_info(self.stream, self.consumer)
+                self.assertEqual(info.num_ack_pending, 1)
+                self.assertEqual(info.num_redelivered, 0)
+                await asyncio.wait_for(acked.wait(), timeout=10)
+
+        settled = await self.js.consumer_info(self.stream, self.consumer)
+        self.assertEqual(settled.num_ack_pending, 0)
+        self.assertEqual(settled.num_redelivered, 0)
+
+    async def test_deleting_and_recreating_durable_preserves_unacked_work(
+        self,
+    ) -> None:
+        event = self._event()
+        await self.js.publish(self.subject, json.dumps(event).encode())
+        await self.js.delete_consumer(self.stream, self.consumer)
+        await self.js.add_consumer(
+            self.stream,
+            config=ConsumerConfig(
+                durable_name=self.consumer,
+                filter_subject=self.subject,
+                ack_policy=AckPolicy.EXPLICIT,
+                ack_wait=ACK_WAIT_SECONDS,
+                max_deliver=MAX_DELIVERIES,
+                max_ack_pending=MAX_ACK_PENDING,
+            ),
+        )
+        received = asyncio.Event()
+
+        async def handler(actual: dict[str, str]) -> None:
+            self.assertEqual(actual["workId"], event["workId"])
+            received.set()
+
+        await self._start_consumer(handler)
+        await asyncio.wait_for(received.wait(), timeout=10)
+        for _ in range(40):
+            info = await self.js.consumer_info(self.stream, self.consumer)
+            if not info.num_pending and not info.num_ack_pending:
+                break
+            await asyncio.sleep(0.05)
+        self.assertEqual(info.num_pending, 0)
+        self.assertEqual(info.num_ack_pending, 0)
+
+    async def test_stream_age_expiry_removes_stale_unacked_command(
+        self,
+    ) -> None:
+        await self.js.update_stream(
+            config=StreamConfig(
+                name=self.stream,
+                subjects=[self.subject],
+                storage=StorageType.MEMORY,
+                retention=RetentionPolicy.WORK_QUEUE,
+                max_age=1,
+            )
+        )
+        await self.js.publish(self.subject, json.dumps(self._event()).encode())
+        await asyncio.sleep(1.3)
+        info = await self.js.stream_info(self.stream)
+        self.assertEqual(info.state.messages, 0)
+
+    async def test_shutdown_drains_active_handler_before_acknowledging(
+        self,
+    ) -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def handler(_event: dict[str, str]) -> None:
+            started.set()
+            await release.wait()
+
+        await self._start_consumer(handler)
+        await self.js.publish(self.subject, json.dumps(self._event()).encode())
+        await asyncio.wait_for(started.wait(), timeout=10)
+
+        self.stop_event.set()
+        release.set()
+        await asyncio.wait_for(self.tasks[0], timeout=10)
+
+        settled = await self.js.consumer_info(self.stream, self.consumer)
+        self.assertEqual(settled.num_ack_pending, 0)
+        self.assertEqual(settled.num_pending, 0)
+
+    async def test_redelivery_after_commit_before_ack_is_idempotent(
+        self,
+    ) -> None:
+        handler_calls = 0
+        acked = asyncio.Event()
+        ack_calls = 0
+        original_ack = Msg.ack
+
+        async def handler(_event: dict[str, str]) -> None:
+            nonlocal handler_calls
+            handler_calls += 1
+
+        async def lose_first_ack(message: Msg, *args, **kwargs):
+            nonlocal ack_calls
+            ack_calls += 1
+            if ack_calls == 1:
+                raise RuntimeError("simulated lost ACK after durable commit")
+            result = await original_ack(message, *args, **kwargs)
+            acked.set()
+            return result
+
+        with patch.object(Msg, "ack", lose_first_ack):
+            with patch("geodata_import_worker.RETRY_DELAY_SECONDS", 0):
+                await self._start_consumer(handler)
+                await self.js.publish(
+                    self.subject, json.dumps(self._event()).encode()
+                )
+                await asyncio.wait_for(acked.wait(), timeout=10)
+
+        self.assertEqual(handler_calls, 1)
+        self.assertEqual(ack_calls, 2)
+        info = await self.js.consumer_info(self.stream, self.consumer)
+        self.assertEqual(info.num_ack_pending, 0)
+        self.assertEqual(info.num_pending, 0)
+        with self.store.transaction() as connection:
+            processed = connection.execute(
+                "SELECT count(*) FROM consumer_processed_event WHERE consumer=%s",
+                (self.consumer,),
+            ).fetchone()[0]
+        self.assertEqual(processed, 1)
+
+    async def test_competing_pull_consumers_process_each_event_once(
+        self,
+    ) -> None:
+        handled = 0
+        all_handled = asyncio.Event()
+
+        async def handler(_event: dict[str, str]) -> None:
+            nonlocal handled
+            handled += 1
+            if handled == 8:
+                all_handled.set()
+
+        await self._start_consumer(handler)
+        await self._start_consumer(handler)
+        for _ in range(8):
+            await self.js.publish(
+                self.subject, json.dumps(self._event()).encode()
+            )
+
+        await asyncio.wait_for(all_handled.wait(), timeout=15)
+        for _ in range(40):
+            info = await self.js.consumer_info(self.stream, self.consumer)
+            if info.num_ack_pending == 0 and info.num_pending == 0:
+                break
+            await asyncio.sleep(0.05)
+
+        self.assertEqual(handled, 8)
+        self.assertEqual(info.num_ack_pending, 0)
+        self.assertEqual(info.num_pending, 0)
+        with self.store.transaction() as connection:
+            processed = connection.execute(
+                "SELECT count(*) FROM consumer_processed_event WHERE consumer=%s",
+                (self.consumer,),
+            ).fetchone()[0]
+        self.assertEqual(processed, 8)
+
+
+if __name__ == "__main__":
+    unittest.main()

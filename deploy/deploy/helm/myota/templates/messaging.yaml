@@ -1,0 +1,83 @@
+{{- if .Values.outbox.enabled }}
+{{- if .Values.nats.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myota-nats-data
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .Values.nats.persistence.storageClassName }}
+  storageClassName: {{ .Values.nats.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.nats.persistence.storageSize | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myota-nats-config
+data:
+  nats.conf: |
+{{ tpl (.Files.Get "observability/nats.conf") . | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myota-nats
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector: {matchLabels: {app.kubernetes.io/name: myota, app.kubernetes.io/component: nats}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: myota, app.kubernetes.io/component: nats}
+      annotations:
+        checksum/nats-config: {{ tpl (.Files.Get "observability/nats.conf") . | sha256sum | quote }}
+    spec:
+      initContainers:
+        - name: render-nats-config
+          image: {{ .Values.nats.image | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - sed "s|__NATS_SYS_PASSWORD_HASH__|${NATS_SYS_PASSWORD_HASH}|" /source/nats.conf > /rendered/nats.conf
+          env:
+            - name: NATS_SYS_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.systemAccount.existingSecret | quote }}
+                  key: password-hash
+          volumeMounts:
+            - {name: config-template, mountPath: /source, readOnly: true}
+            - {name: config, mountPath: /rendered}
+      containers:
+        - name: nats
+          image: {{ .Values.nats.image | quote }}
+          args: ["-c", "/etc/nats/nats.conf"]
+          ports: [{name: client, containerPort: 4222}]
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: config, mountPath: /etc/nats, readOnly: true}
+      volumes:
+        - name: config-template
+          configMap: {name: myota-nats-config}
+        - name: config
+          emptyDir: {}
+        - name: data
+          {{- if .Values.nats.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: myota-nats-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myota-nats
+spec:
+  selector: {app.kubernetes.io/name: myota, app.kubernetes.io/component: nats}
+  ports: [{name: client, port: 4222, targetPort: client}]
+{{- end }}

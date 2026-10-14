@@ -1,0 +1,196 @@
+name: Build and publish geodata service image
+
+on:
+  push:
+    branches: [main, testing, 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main, testing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-load-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify k6 workload contracts without network or production credentials
+        run: node --experimental-vm-modules --test loadtests/tests/geodata-workloads.test.mjs
+
+  test-relational-boundaries:
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: myota
+          POSTGRES_PASSWORD: isolated-test-only
+          POSTGRES_DB: geodata_tests
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U myota -d geodata_tests"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GEO_TEST_DATABASE_URL: postgresql://myota:isolated-test-only@localhost:5432/geodata_tests
+      PGHOST: localhost
+      PGUSER: myota
+      PGPASSWORD: isolated-test-only
+      PGDATABASE: geodata_tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Apply service-owned migrations
+        run: |
+          for migration_file in migrations/*.sql; do
+            psql -v ON_ERROR_STOP=1 -f "$migration_file"
+          done
+      - run: python -m ruff format --check .
+      - run: python -m ruff check .
+      - name: Start disposable JetStream for worker ACK/recovery tests
+        run: |
+          docker run --detach --name myota-test-nats --publish 4222:4222 nats:2.11-alpine -js
+          for attempt in $(seq 1 30); do
+            if nc -z 127.0.0.1 4222; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs myota-test-nats
+          exit 1
+      - name: Test two independent API instances and all regressions
+        env:
+          MYOTA_AUTH_SIGNING_KEY: isolated-ci-test-key
+          MYOTA_NATS_TEST_URL: nats://127.0.0.1:4222
+          GEO_TEST_API_A_URL: http://127.0.0.1:18003
+          GEO_TEST_API_B_URL: http://127.0.0.1:18013
+        run: |
+          GEO_DATABASE_URL="$GEO_TEST_DATABASE_URL" GEODATA_HTTP_PORT=18003 python run_geodata.py >/tmp/geodata-api-a.log 2>&1 &
+          api_a_pid=$!
+          GEO_DATABASE_URL="$GEO_TEST_DATABASE_URL" GEODATA_HTTP_PORT=18013 python run_geodata.py >/tmp/geodata-api-b.log 2>&1 &
+          api_b_pid=$!
+          trap 'kill "$api_a_pid" "$api_b_pid" || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18003/healthz && curl -fsS http://127.0.0.1:18013/healthz; then
+              break
+            fi
+            sleep 1
+          done
+          python -m unittest discover -s tests
+      - name: Remove disposable JetStream broker
+        if: always()
+        run: docker rm --force myota-test-nats || true
+
+  test-upload-session-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: myota
+          POSTGRES_PASSWORD: isolated-test-only
+          POSTGRES_DB: geodata_upload_recovery_tests
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U myota -d geodata_upload_recovery_tests"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GEO_DATABASE_URL: postgresql://myota:isolated-test-only@localhost:5432/geodata_upload_recovery_tests
+      MYOTA_AUTH_SIGNING_KEY: phase2-isolated-test-key
+      MYOTA_GEODATA_IMPORT_BUCKET: myota-geodata-imports
+      SEAWEEDFS_TEST_CONTAINER: myota-seaweedfs-phase2
+      # Immutable image ID reported by the running SeaweedFS pod on spainip.es
+      # when this recovery gate was prepared. Update only after recording the
+      # newly deployed image ID in the Phase 2 evidence.
+      SEAWEEDFS_TEST_IMAGE: docker.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install geodata service dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Start isolated SeaweedFS with a disposable persistent volume
+        run: |
+          docker volume create myota-seaweedfs-phase2-data
+          docker run -d --name "$SEAWEEDFS_TEST_CONTAINER" --network host \
+            -e AWS_ACCESS_KEY_ID=phase2-test-access \
+            -e AWS_SECRET_ACCESS_KEY=phase2-test-secret \
+            -v myota-seaweedfs-phase2-data:/data \
+            "$SEAWEEDFS_TEST_IMAGE" \
+            mini -dir=/data -ip.bind=0.0.0.0 -metricsPort=9324
+      - name: Apply service-owned migrations
+        run: |
+          for migration_file in migrations/*.sql; do
+            psql -v ON_ERROR_STOP=1 "$GEO_DATABASE_URL" -f "$migration_file"
+          done
+      - name: Wait for isolated SeaweedFS readiness
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8333/status >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "SeaweedFS did not become ready" >&2
+          exit 1
+      - name: Exercise API and SeaweedFS restart recovery
+        run: python tests/integration_upload_session_recovery.py
+      - name: Remove isolated SeaweedFS test data
+        if: always()
+        run: |
+          docker rm -f "$SEAWEEDFS_TEST_CONTAINER" || true
+          docker volume rm myota-seaweedfs-phase2-data || true
+
+  build-and-publish:
+    needs: [test-relational-boundaries, test-load-harness, test-upload-session-recovery]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare image tags
+        id: image-tags
+        env:
+          IMAGE_NAME: ghcr.io/myota-platform/myota-geodata-service
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "tags=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF_NAME}" == "testing" ]]; then
+            {
+              echo "tags<<EOF"
+              echo "${IMAGE_NAME}:testing"
+              echo "${IMAGE_NAME}:testing-${GITHUB_SHA}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${IMAGE_NAME}:ci-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build release or isolated testing image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
+          tags: ${{ steps.image-tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.ref.name=${{ github.ref_name }}

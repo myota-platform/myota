@@ -1,0 +1,85 @@
+name: Build and publish admin web image
+
+on:
+  push:
+    branches: [main, testing, 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main, testing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check formatting for changed frontend files
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: npm run lint
+      - name: Check upload regressions, types and production build
+        run: |
+          npm test
+          npm run typecheck
+          npm run build
+      - name: Install browser regression runtime
+        run: npx playwright install --with-deps chromium
+      - name: Check catalogue dialogs, geometry editing and deletion regressions
+        run: npm run test:e2e
+      - name: Retain isolated browser screenshots and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-browser-evidence
+          path: test-results/
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare image tags
+        id: image-tags
+        env:
+          IMAGE_NAME: ghcr.io/myota-platform/myota-admin-web
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "tags=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF_NAME}" == "testing" ]]; then
+            {
+              echo "tags<<EOF"
+              echo "${IMAGE_NAME}:testing"
+              echo "${IMAGE_NAME}:testing-${GITHUB_SHA}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${IMAGE_NAME}:ci-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and publish image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'testing') }}
+          tags: ${{ steps.image-tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.ref.name=${{ github.ref_name }}

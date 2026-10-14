@@ -1,0 +1,419 @@
+{
+  "version": 1,
+  "description": "Owner-to-mirror map for active source-owned runtime modules and selected contract artifacts. Retired Operations runtime modules are intentionally absent; historical migrations remain traceable.",
+  "entries": [
+    {
+      "owner": "myota-identity-service",
+      "path": "identity.py",
+      "mirrors": [
+        "myota-deploy/services/identity.py",
+        "myota-platform/services/identity.py"
+      ]
+    },
+    {
+      "owner": "myota-identity-service",
+      "path": "identity_maintenance.py",
+      "mirrors": [
+        "myota-deploy/services/identity_maintenance.py",
+        "myota-platform/services/identity_maintenance.py"
+      ]
+    },
+    {
+      "owner": "myota-identity-service",
+      "path": "run_identity.py",
+      "mirrors": [
+        "myota-deploy/services/run_identity.py",
+        "myota-platform/services/run_identity.py"
+      ]
+    },
+    {
+      "owner": "myota-programme-service",
+      "path": "programmes.py",
+      "mirrors": [
+        "myota-deploy/services/programmes.py",
+        "myota-platform/services/programmes.py"
+      ]
+    },
+    {
+      "owner": "myota-programme-service",
+      "path": "run_programmes.py",
+      "mirrors": [
+        "myota-deploy/services/run_programmes.py",
+        "myota-platform/services/run_programmes.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "activity.py",
+      "mirrors": [
+        "myota-deploy/services/activity.py",
+        "myota-platform/services/activity.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "activity_domain.py",
+      "mirrors": [
+        "myota-deploy/services/activity_domain.py",
+        "myota-platform/services/activity_domain.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "activity_notification_consumer.py",
+      "mirrors": [
+        "myota-deploy/services/activity_notification_consumer.py",
+        "myota-platform/services/activity_notification_consumer.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "activity_notification_topology.py",
+      "mirrors": [
+        "myota-deploy/services/activity_notification_topology.py",
+        "myota-platform/services/activity_notification_topology.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "activity_repository.py",
+      "mirrors": [
+        "myota-deploy/services/activity_repository.py",
+        "myota-platform/services/activity_repository.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "activity_worker.py",
+      "mirrors": [
+        "myota-deploy/services/activity_worker.py",
+        "myota-platform/services/activity_worker.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "adif_retention_worker.py",
+      "mirrors": [
+        "myota-deploy/services/adif_retention_worker.py",
+        "myota-platform/services/adif_retention_worker.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "awards.py",
+      "mirrors": [
+        "myota-deploy/services/awards.py",
+        "myota-platform/services/awards.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "certificate_design.py",
+      "mirrors": [
+        "myota-deploy/services/certificate_design.py",
+        "myota-platform/services/certificate_design.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "event_consumer.py",
+      "mirrors": [
+        "myota-deploy/services/event_consumer.py",
+        "myota-platform/services/event_consumer.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "redrive_activity_job.py",
+      "mirrors": [
+        "myota-deploy/services/redrive_activity_job.py",
+        "myota-platform/services/redrive_activity_job.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "redrive_notification_dead_letter.py",
+      "mirrors": [
+        "myota-deploy/services/redrive_notification_dead_letter.py",
+        "myota-platform/services/redrive_notification_dead_letter.py"
+      ]
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "run_activity.py",
+      "mirrors": [
+        "myota-deploy/services/run_activity.py",
+        "myota-platform/services/run_activity.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata.py",
+      "mirrors": [
+        "myota-deploy/services/geodata.py",
+        "myota-platform/services/geodata.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_import_worker.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_import_worker.py",
+        "myota-platform/services/geodata_import_worker.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_importer.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_importer.py",
+        "myota-platform/services/geodata_importer.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_operations.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_operations.py",
+        "myota-platform/services/geodata_operations.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_pipeline.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_pipeline.py",
+        "myota-platform/services/geodata_pipeline.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_retention_worker.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_retention_worker.py",
+        "myota-platform/services/geodata_retention_worker.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_store.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_store.py",
+        "myota-platform/services/geodata_store.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "import_adapters.py",
+      "mirrors": [
+        "myota-deploy/services/import_adapters.py",
+        "myota-platform/services/import_adapters.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "import_formats.py",
+      "mirrors": [
+        "myota-deploy/services/import_formats.py",
+        "myota-platform/services/import_formats.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "import_retention.py",
+      "mirrors": [
+        "myota-deploy/services/import_retention.py",
+        "myota-platform/services/import_retention.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "location_catalog.py",
+      "mirrors": [
+        "myota-deploy/services/location_catalog.py",
+        "myota-platform/services/location_catalog.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "maidenhead.py",
+      "mirrors": [
+        "myota-deploy/services/maidenhead.py",
+        "myota-platform/services/maidenhead.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "relational_metrics.py",
+      "mirrors": [
+        "myota-deploy/services/relational_metrics.py",
+        "myota-platform/services/relational_metrics.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "relational_queries.py",
+      "mirrors": [
+        "myota-deploy/services/relational_queries.py",
+        "myota-platform/services/relational_queries.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "relational_state.py",
+      "mirrors": [
+        "myota-deploy/services/relational_state.py",
+        "myota-platform/services/relational_state.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "reverse_geocoder.py",
+      "mirrors": [
+        "myota-deploy/services/reverse_geocoder.py",
+        "myota-platform/services/reverse_geocoder.py"
+      ]
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "run_geodata.py",
+      "mirrors": [
+        "myota-deploy/services/run_geodata.py",
+        "myota-platform/services/run_geodata.py"
+      ]
+    },
+    {
+      "owner": "myota-platform",
+      "path": "runtime/myota_logging.py",
+      "mirrors": [
+        "myota-identity-service/myota_logging.py",
+        "myota-programme-service/myota_logging.py",
+        "myota-activity-service/myota_logging.py",
+        "myota-geodata-service/myota_logging.py",
+        "myota-deploy/services/myota_logging.py",
+        "myota-platform/services/myota_logging.py"
+      ],
+      "shared": true
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "geodata_routes.py",
+      "mirrors": [
+        "myota-deploy/services/geodata_routes.py",
+        "myota-platform/services/geodata_routes.py"
+      ]
+    },
+    {
+      "owner": "myota-contracts",
+      "path": "contracts/openapi.yaml",
+      "mirrors": [
+        "myota-contracts/openapi.yaml",
+        "myota-platform/contracts/openapi.yaml"
+      ],
+      "artifactType": "openapi"
+    },
+    {
+      "owner": "myota-contracts",
+      "path": "contracts/event-registry.json",
+      "mirrors": [
+        "myota-platform/contracts/event-registry.json"
+      ],
+      "artifactType": "event-registry"
+    },
+    {
+      "owner": "myota-deploy",
+      "path": "deploy/helm/myota/observability/grafana/dashboards/myota-object-storage.json",
+      "mirrors": [
+        "myota-deploy/observability/grafana/dashboards/myota-object-storage.json",
+        "myota-platform/observability/grafana/dashboards/myota-object-storage.json",
+        "myota-platform/deploy/helm/myota/observability/grafana/dashboards/myota-object-storage.json"
+      ],
+      "artifactType": "observability"
+    },
+    {
+      "owner": "myota-deploy",
+      "path": "deploy/helm/myota/observability/rules.yml",
+      "mirrors": [
+        "myota-platform/deploy/helm/myota/observability/rules.yml"
+      ],
+      "artifactType": "observability"
+    }
+  ],
+  "treeEntries": [
+    {
+      "owner": "myota-contracts",
+      "path": "contracts/schemas",
+      "mirrors": [
+        "myota-platform/contracts/schemas"
+      ],
+      "artifactType": "event-schemas"
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "migrations",
+      "mirrors": [
+        "myota-deploy/db/migrations/activity",
+        "myota-platform/db/migrations/activity"
+      ],
+      "artifactType": "migrations"
+    },
+    {
+      "owner": "myota-geodata-service",
+      "path": "migrations",
+      "mirrors": [
+        "myota-deploy/db/migrations/geo",
+        "myota-platform/db/migrations/geo"
+      ],
+      "artifactType": "migrations"
+    }
+  ],
+  "retiredEntries": [
+    {
+      "owner": "myota-operations-service",
+      "path": "migrations/001_operations.sql",
+      "formerMirrors": [
+        "myota-deploy/db/migrations/core/002_operations.sql",
+        "myota-platform/db/migrations/core/002_operations.sql"
+      ],
+      "reason": "Operations Service is retired; its schema objects were removed from active Deploy and Platform migrations."
+    },
+    {
+      "owner": "myota-operations-service",
+      "path": "migrations/002_storage_snapshots.sql",
+      "formerMirrors": [
+        "myota-deploy/db/migrations/core/003_storage_snapshots.sql",
+        "myota-platform/db/migrations/core/003_storage_snapshots.sql"
+      ],
+      "reason": "Operations Service is retired; its schema objects were removed from active Deploy and Platform migrations."
+    },
+    {
+      "owner": "myota-operations-service",
+      "path": "migrations/003_retire_storage_snapshots.sql",
+      "formerMirrors": [
+        "myota-deploy/db/migrations/core/006_retire_storage_snapshots.sql",
+        "myota-platform/db/migrations/core/006_retire_storage_snapshots.sql"
+      ],
+      "reason": "Operations Service is retired; its schema objects were removed from active Deploy and Platform migrations."
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "migrations/006_notification_consumer_replay.sql",
+      "sourceRetired": true,
+      "formerMirrors": [
+        "myota-deploy/db/migrations/activity/006_notification_consumer_replay.sql",
+        "myota-platform/db/migrations/activity/006_notification_consumer_replay.sql"
+      ],
+      "reason": "The unified Activity migration baseline replaced this incremental migration; its old mirror must remain absent from active migration trees."
+    },
+    {
+      "owner": "myota-activity-service",
+      "path": "migrations/007_activity_jetstream_work.sql",
+      "sourceRetired": true,
+      "formerMirrors": [
+        "myota-deploy/db/migrations/activity/007_activity_jetstream_work.sql",
+        "myota-platform/db/migrations/activity/007_activity_jetstream_work.sql"
+      ],
+      "reason": "The unified Activity migration baseline replaced this incremental migration; its old mirror must remain absent from active migration trees."
+    }
+  ]
+}

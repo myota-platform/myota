@@ -1,0 +1,70 @@
+{{- if .Values.jetstreamProvisioner.enabled }}
+{{- if not .Values.jetstreamProvisioner.confirmedMigrationGate }}
+{{- fail "jetstreamProvisioner.enabled requires jetstreamProvisioner.confirmedMigrationGate=true after the documented compatibility and capacity gates pass" }}
+{{- end }}
+{{- $capacity := .Values.jetstreamProvisioner.capacity }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: myota-jetstream-provisioner-{{ .Release.Revision }}
+  annotations:
+    myota.org/job-purpose: jetstream-topology-provisioning
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myota
+        app.kubernetes.io/component: jetstream-provisioner
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: provisioner
+          image: {{ include "myota.imageReference" (dict "repository" (default .Values.image.repository .Values.jetstreamProvisioner.imageRepository) "tag" (default .Values.image.tag .Values.jetstreamProvisioner.imageTag) "digest" .Values.imageRollout.digests.platform) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          command: ["python3", "/app/services/provision_jetstream.py"]
+          env:
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+            - name: NATS_TOPOLOGY_APPLY
+              value: "1"
+            - name: NATS_TOPOLOGY_SCOPE
+              value: {{ .Values.jetstreamProvisioner.scope | quote }}
+            - name: NATS_EVENTS_RETENTION_MIGRATION
+              value: {{ ternary "1" "0" .Values.jetstreamProvisioner.migrateEventsStream | quote }}
+{{- $capacityEnv := dict
+  "NATS_EVENTS_MAX_BYTES" $capacity.eventsMaxBytes
+  "NATS_EVENTS_MAX_MESSAGES" $capacity.eventsMaxMessages
+  "NATS_EVENTS_MAX_MESSAGE_BYTES" $capacity.eventsMaxMessageBytes
+  "NATS_ACTIVITY_WORK_MAX_AGE_SECONDS" $capacity.activityWorkMaxAgeSeconds
+  "NATS_ACTIVITY_WORK_MAX_BYTES" $capacity.activityWorkMaxBytes
+  "NATS_ACTIVITY_WORK_MAX_MESSAGES" $capacity.activityWorkMaxMessages
+  "NATS_ACTIVITY_WORK_MAX_MESSAGE_BYTES" $capacity.activityWorkMaxMessageBytes
+  "NATS_GEODATA_WORK_MAX_AGE_SECONDS" $capacity.geodataWorkMaxAgeSeconds
+  "NATS_GEODATA_WORK_MAX_BYTES" $capacity.geodataWorkMaxBytes
+  "NATS_GEODATA_WORK_MAX_MESSAGES" $capacity.geodataWorkMaxMessages
+  "NATS_GEODATA_WORK_MAX_MESSAGE_BYTES" $capacity.geodataWorkMaxMessageBytes
+}}
+{{- if eq .Values.jetstreamProvisioner.scope "activity-work" }}
+{{- $capacityEnv = dict
+  "NATS_ACTIVITY_WORK_MAX_AGE_SECONDS" $capacity.activityWorkMaxAgeSeconds
+  "NATS_ACTIVITY_WORK_MAX_BYTES" $capacity.activityWorkMaxBytes
+  "NATS_ACTIVITY_WORK_MAX_MESSAGES" $capacity.activityWorkMaxMessages
+  "NATS_ACTIVITY_WORK_MAX_MESSAGE_BYTES" $capacity.activityWorkMaxMessageBytes
+}}
+{{- end }}
+{{- if eq .Values.jetstreamProvisioner.scope "geodata-work" }}
+{{- $capacityEnv = dict
+  "NATS_GEODATA_WORK_MAX_AGE_SECONDS" $capacity.geodataWorkMaxAgeSeconds
+  "NATS_GEODATA_WORK_MAX_BYTES" $capacity.geodataWorkMaxBytes
+  "NATS_GEODATA_WORK_MAX_MESSAGES" $capacity.geodataWorkMaxMessages
+  "NATS_GEODATA_WORK_MAX_MESSAGE_BYTES" $capacity.geodataWorkMaxMessageBytes
+}}
+{{- end }}
+{{- range $name, $value := $capacityEnv }}
+            - name: {{ $name }}
+              value: {{ required (printf "jetstreamProvisioner.capacity value for %s is required" $name) $value | quote }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "candidates": [
+    {
+      "signature": "POST /v1/awards/{awardId}/{action}",
+      "paths": [
+        "/v1/awards/{awardId}/publish",
+        "/v1/awards/{awardId}/retire",
+        "/v1/awards/{awardId}/review",
+        "/v1/awards/{awardId}/submit"
+      ],
+      "reason": "Award submission, review, publication, and retirement remain distinct audited lifecycle commands."
+    },
+    {
+      "signature": "POST /v1/identity/accounts/{accountId}/callsigns/{callsignId}/{action}",
+      "paths": [
+        "/v1/identity/accounts/{accountId}/callsigns/{callsignId}/retire",
+        "/v1/identity/accounts/{accountId}/callsigns/{callsignId}/verify"
+      ],
+      "reason": "Callsign verification and retirement are separate evidence-backed lifecycle commands."
+    },
+    {
+      "signature": "POST /v1/programmes/{slug}/content/{contentId}/{action}",
+      "paths": [
+        "/v1/programmes/{slug}/content/{contentId}/publish",
+        "/v1/programmes/{slug}/content/{contentId}/review",
+        "/v1/programmes/{slug}/content/{contentId}/submit"
+      ],
+      "reason": "Content submission, review, and publication have separate actors and audit records."
+    },
+    {
+      "signature": "POST /v1/programmes/{slug}/policy-drafts/{draftId}/{action}",
+      "paths": [
+        "/v1/programmes/{slug}/policy-drafts/{draftId}/publish",
+        "/v1/programmes/{slug}/policy-drafts/{draftId}/review",
+        "/v1/programmes/{slug}/policy-drafts/{draftId}/submit"
+      ],
+      "reason": "Policy draft submission, review, and publication have separate actors and effective-date rules."
+    }
+  ]
+}

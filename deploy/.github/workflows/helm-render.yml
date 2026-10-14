@@ -1,0 +1,172 @@
+name: Helm chart validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/helm/**"
+      - ".github/workflows/helm-render.yml"
+  pull_request:
+    branches: [main, testing]
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Lint and render MyOTA chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out deployment repository
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: Lint chart
+        run: helm lint deploy/helm/myota --values deploy/helm/myota/values.yaml
+
+      - name: Lint Spainip Fleet values
+        run: helm lint deploy/helm/myota --values deploy/helm/myota/values-spainip.yaml
+
+      - name: Render chart
+        run: >-
+          helm template myota deploy/helm/myota
+          --namespace myota
+          --kube-version 1.30.0
+          --values deploy/helm/myota/values.yaml
+          --set geodataPipeline.importer.enabled=true
+          --set geodataPipeline.importer.image=ghcr.io/myota-platform/myota-service:ci
+
+      - name: Render the gated JetStream topology bootstrap Job
+        run: >-
+          helm template myota deploy/helm/myota
+          --namespace myota
+          --values deploy/helm/myota/values.yaml
+          --set jetstreamProvisioner.enabled=true
+          --set jetstreamProvisioner.confirmedMigrationGate=true
+          --set jetstreamProvisioner.capacity.eventsMaxBytes=1073741824
+          --set jetstreamProvisioner.capacity.eventsMaxMessages=500000
+          --set jetstreamProvisioner.capacity.eventsMaxMessageBytes=1048576
+          --set jetstreamProvisioner.capacity.activityWorkMaxAgeSeconds=2592000
+          --set jetstreamProvisioner.capacity.activityWorkMaxBytes=1073741824
+          --set jetstreamProvisioner.capacity.activityWorkMaxMessages=250000
+          --set jetstreamProvisioner.capacity.activityWorkMaxMessageBytes=1048576
+          --set jetstreamProvisioner.capacity.geodataWorkMaxAgeSeconds=2592000
+          --set jetstreamProvisioner.capacity.geodataWorkMaxBytes=3221225472
+          --set jetstreamProvisioner.capacity.geodataWorkMaxMessages=500000
+          --set jetstreamProvisioner.capacity.geodataWorkMaxMessageBytes=1048576
+          --show-only templates/jetstream-provisioner.yaml
+          > /tmp/myota-jetstream-preflight.yaml
+
+      - name: Verify JetStream preflight is fail-closed and upgrade-gated
+        run: |
+          grep -q 'name: myota-jetstream-provisioner-' /tmp/myota-jetstream-preflight.yaml
+          grep -q 'ttlSecondsAfterFinished: 300' /tmp/myota-jetstream-preflight.yaml
+          if grep -q '"helm.sh/hook":' /tmp/myota-jetstream-preflight.yaml; then
+            echo 'JetStream provisioning must run alongside first-install resources.' >&2
+            exit 1
+          fi
+          grep -q 'name: NATS_TOPOLOGY_APPLY' /tmp/myota-jetstream-preflight.yaml
+          if helm template myota deploy/helm/myota \
+            --set jetstreamProvisioner.enabled=true >/dev/null; then
+            echo 'JetStream provisioner rendered without explicit gate confirmation.' >&2
+            exit 1
+          fi
+
+      - name: Render Spainip Fleet release
+        run: >-
+          helm template myota deploy/helm/myota
+          --namespace myota
+          --kube-version 1.30.0
+          --values deploy/helm/myota/values-spainip.yaml
+          --values deploy/helm/myota/values-image-digests.yaml
+          > /tmp/myota-spainip-rendered.yaml
+
+      - name: Verify migration gate and Traefik routes
+        run: |
+          grep -q 'name: GF_DATE_FORMATS_DEFAULT_TIMEZONE, value: UTC' /tmp/myota-spainip-rendered.yaml
+          test "$(grep -c 'timeZone: Etc/UTC' /tmp/myota-spainip-rendered.yaml)" -eq 2
+          grep -q 'name: myota-migrations-' /tmp/myota-spainip-rendered.yaml
+          grep -q 'imagePullPolicy: "Always"' /tmp/myota-spainip-rendered.yaml
+          grep -q 'value: "1073741824"' /tmp/myota-spainip-rendered.yaml
+          grep -q 'name: MYOTA_ACCESS_TOKEN_SECONDS' /tmp/myota-spainip-rendered.yaml
+          grep -q 'value: "1800"' /tmp/myota-spainip-rendered.yaml
+          grep -q 'rollout.myota.dev/image-digest' /tmp/myota-spainip-rendered.yaml
+          test "$(grep -c 'rollout.myota.dev/location-enrichment-revision' /tmp/myota-spainip-rendered.yaml)" -eq 2
+          grep -q 'name: wait-for-schema' /tmp/myota-spainip-rendered.yaml
+          grep -q 'kind: IngressRoute' /tmp/myota-spainip-rendered.yaml
+          grep -q 'maxSurge: 0' /tmp/myota-spainip-rendered.yaml
+          grep -q 'maxUnavailable: 0' /tmp/myota-spainip-rendered.yaml
+          grep -q 'kind: HorizontalPodAutoscaler' /tmp/myota-spainip-rendered.yaml
+          grep -q 'name: myota-geodata-api' /tmp/myota-spainip-rendered.yaml
+          grep -q 'maxReplicas: 3' /tmp/myota-spainip-rendered.yaml
+          grep -q 'minReplicas: 2' /tmp/myota-spainip-rendered.yaml
+          grep -q 'averageUtilization: 70' /tmp/myota-spainip-rendered.yaml
+          grep -q 'minAvailable: 1' /tmp/myota-spainip-rendered.yaml
+          grep -q 'value: "8"' /tmp/myota-spainip-rendered.yaml
+          grep -q 'topologyKey: kubernetes.io/hostname' /tmp/myota-spainip-rendered.yaml
+          grep -q 'memory: 256Mi' /tmp/myota-spainip-rendered.yaml
+          grep -q 'memory: 1Gi' /tmp/myota-spainip-rendered.yaml
+          grep -q 'failureThreshold: 30' /tmp/myota-spainip-rendered.yaml
+          grep -q 'path: /healthz, port: http' /tmp/myota-spainip-rendered.yaml
+          grep -q 'name: myota-grafana-data' /tmp/myota-spainip-rendered.yaml
+          grep -q 'GF_AUTH_ANONYMOUS_ENABLED, value: "false"' /tmp/myota-spainip-rendered.yaml
+          grep -q 'GF_AUTH_PROXY_ENABLED, value: "true"' /tmp/myota-spainip-rendered.yaml
+          grep -q 'MYOTA_GRAFANA_UPSTREAM' /tmp/myota-spainip-rendered.yaml
+          test "$(grep -c 'name: BIGDATACLOUD_API_KEY' /tmp/myota-spainip-rendered.yaml)" -eq 2
+          test "$(grep -c 'name: BIGDATACLOUD_LOCALITY_LANGUAGE' /tmp/myota-spainip-rendered.yaml)" -eq 2
+          grep -q 'name: myota-jetstream-provisioner-' /tmp/myota-spainip-rendered.yaml
+          grep -q 'name: NATS_EVENTS_RETENTION_MIGRATION' /tmp/myota-spainip-rendered.yaml
+          grep -q 'value: "0"' /tmp/myota-spainip-rendered.yaml
+          if helm template myota deploy/helm/myota \
+            --namespace myota \
+            --values deploy/helm/myota/values-spainip.yaml \
+            --set geodataImportProcessing.replicas=3 >/dev/null; then
+            echo 'Geodata worker replica limit was not enforced.' >&2
+            exit 1
+          fi
+
+      - name: Build and lint the isolated testing release
+        run: |
+          helm dependency build deploy/helm/myota-test
+          helm lint deploy/helm/myota-test
+          helm template myota-test deploy/helm/myota-test \
+            --namespace myota-test \
+            --values deploy/helm/myota-test/values-testing.yaml \
+            --values deploy/helm/myota-test/values-image-digests-testing.yaml \
+            > /tmp/myota-test-rendered.yaml
+          grep -q 'name: myota-web' /tmp/myota-test-rendered.yaml
+          grep -Eq 'ghcr.io/myota-platform/myota-web@sha256:[0-9a-f]{64}' /tmp/myota-test-rendered.yaml
+          grep -Eq 'ghcr.io/myota-platform/myota-geodata-service@sha256:[0-9a-f]{64}' /tmp/myota-test-rendered.yaml
+          helm template myota-test deploy/helm/myota-test \
+            --namespace myota-test \
+            --values deploy/helm/myota-test/values-testing.yaml \
+            --values deploy/helm/myota-test/values-image-digests-testing.yaml \
+            --set myota.ingress.enabled=false \
+            > /tmp/myota-test-private-rendered.yaml
+          if grep -q 'Host(`admin.test.myota.top`)' /tmp/myota-test-private-rendered.yaml || \
+            grep -q 'Host(`test.myota.top`)' /tmp/myota-test-private-rendered.yaml; then
+            echo 'Ingress-disabled test render unexpectedly contains public routes.' >&2
+            exit 1
+          fi
+          helm template myota-test deploy/helm/myota-test \
+            --namespace myota-test \
+            --values deploy/helm/myota-test/values-testing.yaml \
+            --values deploy/helm/myota-test/values-image-digests-testing.yaml \
+            --set myota.ingress.enabled=true \
+            > /tmp/myota-test-exposed-rendered.yaml
+          grep -q 'Host(`admin.test.myota.top`)' /tmp/myota-test-exposed-rendered.yaml
+          grep -q 'Host(`test.myota.top`)' /tmp/myota-test-exposed-rendered.yaml
+          grep -q 'name: myota-user-web' /tmp/myota-test-exposed-rendered.yaml
+          grep -q 'myota-test' /tmp/myota-test-rendered.yaml
+          if helm template myota deploy/helm/myota \
+            --namespace myota \
+            --values deploy/helm/myota/values-spainip.yaml \
+            --set geodataConnectionBudget.reservedConnections=80 >/dev/null; then
+            echo 'Geodata Postgres connection budget was not enforced.' >&2
+            exit 1
+          fi

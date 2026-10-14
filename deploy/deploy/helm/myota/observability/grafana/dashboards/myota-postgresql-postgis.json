@@ -1,0 +1,411 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "title": "Geodata operations runbook",
+      "tooltip": "Geodata import and PostgreSQL runbook",
+      "type": "link",
+      "url": "https://github.com/myota-platform/myota-docs/blob/main/docs/operations/runbooks.md"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "title": "Geodata capacity dashboard",
+      "tooltip": "Geodata workload and PostGIS service metrics",
+      "type": "link",
+      "url": "/observability/d/myota-geodata-capacity"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Database connections",
+      "description": "Current client backend count from the OpenTelemetry PostgreSQL receiver; labels use only the fixed database names.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "postgresql_backends{postgresql_database_name=\"core\"}",
+          "legendFormat": "core",
+          "refId": "A"
+        },
+        {
+          "expr": "postgresql_backends{postgresql_database_name=\"activity\"}",
+          "legendFormat": "activity",
+          "refId": "B"
+        },
+        {
+          "expr": "postgresql_backends{postgresql_database_name=\"geo\"}",
+          "legendFormat": "geo",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Database size",
+      "description": "Trend only; establish representative growth before setting capacity triggers.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "postgresql_db_size{postgresql_database_name=\"core\"}",
+          "legendFormat": "core",
+          "refId": "A"
+        },
+        {
+          "expr": "postgresql_db_size{postgresql_database_name=\"activity\"}",
+          "legendFormat": "activity",
+          "refId": "B"
+        },
+        {
+          "expr": "postgresql_db_size{postgresql_database_name=\"geo\"}",
+          "legendFormat": "geo",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Commit rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(postgresql_commits_total{postgresql_database_name=\"core\"}[5m])",
+          "legendFormat": "core",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(postgresql_commits_total{postgresql_database_name=\"activity\"}[5m])",
+          "legendFormat": "activity",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(postgresql_commits_total{postgresql_database_name=\"geo\"}[5m])",
+          "legendFormat": "geo",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Rollback rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(postgresql_rollbacks_total{postgresql_database_name=\"core\"}[5m])",
+          "legendFormat": "core",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(postgresql_rollbacks_total{postgresql_database_name=\"activity\"}[5m])",
+          "legendFormat": "activity",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(postgresql_rollbacks_total{postgresql_database_name=\"geo\"}[5m])",
+          "legendFormat": "geo",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Deadlocks",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(postgresql_deadlocks_total{postgresql_database_name=\"core\"}[5m])",
+          "legendFormat": "core",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(postgresql_deadlocks_total{postgresql_database_name=\"activity\"}[5m])",
+          "legendFormat": "activity",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(postgresql_deadlocks_total{postgresql_database_name=\"geo\"}[5m])",
+          "legendFormat": "geo",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "PostGIS query latency p95",
+      "description": "Bounded Geodata application histogram; it reports Geo query latency only and never contains SQL text.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, query) (rate(myota_geodata_postgis_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{query}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Connection utilization",
+      "description": "Connections divided by configured max_connections from the OpenTelemetry PostgreSQL receiver. Missing series are not zero.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * postgresql_backends / on(postgresql_database_name) postgresql_connection_max",
+          "legendFormat": "{{database}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Geodata connection pool waiters",
+      "description": "Current application-side pool waiters; this is a Geodata pool value, not all database clients.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "myota_geodata_postgres_pool_waiting_requests",
+          "legendFormat": "waiting requests",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Geodata PostgreSQL lock waits",
+      "description": "Current connections waiting on database locks, measured by the Geodata application.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "myota_geodata_postgres_lock_waiting_connections",
+          "legendFormat": "waiting connections",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Geodata connection pool wait duration",
+      "description": "Five-minute rate of application-observed pool wait time, converted from milliseconds to seconds per second.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(myota_geodata_postgres_pool_wait_milliseconds_total[5m]) / 1000",
+          "legendFormat": "Geodata pool wait seconds/second",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "text",
+      "title": "Unsupported database signals",
+      "description": "Metrics intentionally absent from the current least-privilege source are identified explicitly.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "myota-prometheus"
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "The current least-privilege OpenTelemetry receiver does **not** export transaction age, cache hit ratio, autovacuum/freeze age, or per-table maintenance state. They are unavailable, not zero. No panel is drawn for these signals. PostgreSQL panels use fixed database names and approved aggregate metrics; query text, parameters, per-table details, credentials, and user identifiers are not collected."
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "myota",
+    "postgresql",
+    "postgis"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "MyOTA PostgreSQL and PostGIS",
+  "uid": "myota-postgresql-postgis",
+  "version": 2
+}

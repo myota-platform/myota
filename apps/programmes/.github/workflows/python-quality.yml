@@ -1,0 +1,11 @@
+name: Python quality
+
+on:
+  push:
+    branches: [main, testing, 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main, testing]
+
+jobs:
+  python-quality:
+    uses: myota-platform/.github/.github/workflows/python-quality.yml@main

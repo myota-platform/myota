@@ -1,0 +1,269 @@
+{{- if and .Values.ingress.enabled .Values.adminWeb.enabled (eq .Values.ingress.provider "traefik") }}
+{{- $entryPoints := .Values.ingress.entryPoints | default (list "websecure") }}
+{{- if .Values.ingress.adminHost }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: myota-public
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: ingress
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    {{- toYaml $entryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`)" .Values.ingress.host | quote }}
+      services:
+        - name: myota-gateway
+          port: {{ .Values.gateway.port }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.tls.secretName }}
+    secretName: {{ .Values.ingress.tls.secretName | quote }}
+    {{- else if .Values.ingress.tls.certResolver }}
+    certResolver: {{ .Values.ingress.tls.certResolver | quote }}
+    {{- end }}
+  {{- end }}
+{{- if .Values.ingress.adminHost }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: myota-admin
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: ingress
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    {{- toYaml $entryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`)" .Values.ingress.adminHost | quote }}
+      services:
+        - name: myota-admin-web
+          port: {{ .Values.adminWeb.servicePort }}
+  {{- if .Values.ingress.adminTls.enabled }}
+  tls:
+    {{- if .Values.ingress.adminTls.secretName }}
+    secretName: {{ .Values.ingress.adminTls.secretName | quote }}
+    {{- else if .Values.ingress.adminTls.certResolver }}
+    certResolver: {{ .Values.ingress.adminTls.certResolver | quote }}
+    {{- else if .Values.ingress.tls.certResolver }}
+    certResolver: {{ .Values.ingress.tls.certResolver | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- else }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: myota
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: ingress
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    {{- toYaml $entryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`)" .Values.ingress.host | quote }}
+      services:
+        - name: myota-admin-web
+          port: {{ .Values.adminWeb.servicePort }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.tls.secretName }}
+    secretName: {{ .Values.ingress.tls.secretName | quote }}
+    {{- else if .Values.ingress.tls.certResolver }}
+    certResolver: {{ .Values.ingress.tls.certResolver | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- else if and .Values.ingress.enabled .Values.adminWeb.enabled }}
+{{- if .Values.ingress.adminHost }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myota-public
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: ingress
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      {{- if .Values.ingress.tls.secretName }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myota-gateway
+                port:
+                  number: {{ .Values.gateway.port }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myota-admin
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: ingress
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.ingress.adminTls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.adminHost | quote }}
+      {{- if .Values.ingress.adminTls.secretName }}
+      secretName: {{ .Values.ingress.adminTls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.adminHost | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myota-admin-web
+                port:
+                  number: {{ .Values.adminWeb.servicePort }}
+{{- else }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myota
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: ingress
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      {{- if .Values.ingress.tls.secretName }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myota-admin-web
+                port:
+                  number: {{ .Values.adminWeb.servicePort }}
+{{- end }}
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.web.enabled .Values.ingress.webHost (eq .Values.ingress.provider "traefik") }}
+{{- $webEntryPoints := .Values.ingress.entryPoints | default (list "websecure") }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: myota-user-web
+  labels: {app.kubernetes.io/name: myota, app.kubernetes.io/component: ingress}
+spec:
+  entryPoints:
+    {{- toYaml $webEntryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`) && (Path(`/v1`) || PathPrefix(`/v1/`))" .Values.ingress.webHost | quote }}
+      priority: 100
+      services:
+        - name: myota-gateway
+          port: {{ .Values.gateway.port }}
+    - kind: Rule
+      match: {{ printf "Host(`%s`) && PathPrefix(`/`)" .Values.ingress.webHost | quote }}
+      priority: 1
+      services:
+        - name: myota-web
+          port: {{ .Values.web.servicePort }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.tls.secretName }}
+    secretName: {{ .Values.ingress.tls.secretName | quote }}
+    {{- else if .Values.ingress.tls.certResolver }}
+    certResolver: {{ .Values.ingress.tls.certResolver | quote }}
+    {{- end }}
+  {{- end }}
+{{- else if and .Values.ingress.enabled .Values.web.enabled .Values.ingress.webHost (eq .Values.ingress.provider "kubernetes") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myota-user-web
+  labels: {app.kubernetes.io/name: myota, app.kubernetes.io/component: ingress}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.webHost | quote }}]
+      {{- if .Values.ingress.tls.secretName }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.webHost | quote }}
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: myota-gateway
+                port: {number: {{ .Values.gateway.port }}}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myota-web
+                port: {number: {{ .Values.web.servicePort }}}
+{{- end }}

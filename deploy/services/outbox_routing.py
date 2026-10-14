@@ -1,0 +1,244 @@
+"""Contract-backed routing and immutable envelope construction."""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import UUID
+
+
+CATALOG_PATH = Path(__file__).with_name("event_registry.json")
+CATALOG = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+EVENTS = CATALOG["events"]
+LEGACY_WORK_ROUTES = CATALOG["legacyWorkRoutes"]
+TARGET_WORK_ROUTES = CATALOG.get("targetWorkRoutes", {})
+UUID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-"
+    r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
+
+
+class OutboxContractError(ValueError):
+    """An outbox row cannot be published under the checked-in contract."""
+
+
+def event_subject(event: dict) -> str:
+    """Route registered facts and target work commands."""
+    event_type = event.get("workType", event.get("eventType"))
+    if not isinstance(event_type, str):
+        raise OutboxContractError("outbox event type is required")
+
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        raise OutboxContractError("outbox payload must be an object")
+
+    work_route = LEGACY_WORK_ROUTES.get(event_type)
+    target_route = TARGET_WORK_ROUTES.get(event_type)
+    explicit_subject = payload.get("natsSubject")
+    if work_route:
+        if explicit_subject != work_route["subject"]:
+            raise OutboxContractError(
+                "legacy work event has an unexpected subject"
+            )
+        target = TARGET_WORK_ROUTES.get(work_route["workType"])
+        if target is None:
+            raise OutboxContractError(
+                "legacy work route has no target command"
+            )
+        return target["subject"]
+    if target_route:
+        if explicit_subject is not None:
+            raise OutboxContractError(
+                "registered work subject cannot be overridden"
+            )
+        return target_route["subject"]
+    if event_type not in EVENTS:
+        raise OutboxContractError("unregistered outbox event type")
+    if explicit_subject is not None:
+        raise OutboxContractError(
+            "domain fact cannot override its registered subject"
+        )
+    return EVENTS[event_type]["subject"]
+
+
+def _utc_timestamp(value: datetime) -> str:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise OutboxContractError("outbox timestamp must include a timezone")
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _bounded_correlation_id(value: object) -> str | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 128
+        or any(ord(char) < 0x21 or ord(char) > 0x7E for char in value)
+    ):
+        raise OutboxContractError(
+            "correlation ID must be bounded printable text"
+        )
+    return value
+
+
+def event_envelope(row: tuple) -> dict:
+    """Build a versioned fact or compatible current Geodata work envelope."""
+    (
+        event_id,
+        event_type,
+        producer,
+        aggregate_type,
+        aggregate_id,
+        payload,
+        occurred_at,
+        _attempts,
+    ) = row[:8]
+    correlation_id = _bounded_correlation_id(row[8] if len(row) > 8 else None)
+    work_route = LEGACY_WORK_ROUTES.get(event_type)
+    target_type = work_route["workType"] if work_route else event_type
+    target_route = TARGET_WORK_ROUTES.get(target_type)
+    if (
+        event_type not in EVENTS
+        and work_route is None
+        and target_route is None
+    ):
+        raise OutboxContractError("unregistered outbox event type")
+    if not isinstance(payload, dict):
+        raise OutboxContractError("outbox payload must be an object")
+    try:
+        normalized_id = str(UUID(str(event_id)))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise OutboxContractError("outbox event ID must be a UUID") from exc
+    if not UUID_PATTERN.fullmatch(normalized_id):
+        raise OutboxContractError("outbox event ID must be a UUID")
+    if not isinstance(producer, str) or not producer:
+        raise OutboxContractError("outbox producer is required")
+    expected_producers = (
+        work_route["producers"]
+        if work_route
+        else target_route["producers"]
+        if target_route
+        else EVENTS[event_type]["producers"]
+    )
+    if producer not in expected_producers:
+        raise OutboxContractError(
+            "outbox producer does not match registered event owner"
+        )
+    if not isinstance(aggregate_type, str) or not aggregate_type:
+        raise OutboxContractError("outbox aggregate type is required")
+    if aggregate_id is None:
+        raise OutboxContractError("outbox aggregate ID is required")
+
+    envelope = {
+        "eventId": normalized_id,
+        "eventType": event_type,
+        "occurredAt": _utc_timestamp(occurred_at),
+        "producer": producer,
+        "aggregate": {
+            "type": aggregate_type,
+            "id": str(aggregate_id),
+        },
+        "payload": payload,
+    }
+    if correlation_id:
+        envelope["correlationId"] = correlation_id
+    if target_route:
+        command_payload = payload
+        work_id_field = "jobId"
+        if work_route:
+            fields = work_route.get("payloadFields")
+            work_id_field = work_route.get("workIdField")
+            if not isinstance(fields, list) or not fields or not work_id_field:
+                raise OutboxContractError(
+                    "legacy work route is missing its bounded payload projection"
+                )
+            command_payload = {}
+            for field in fields:
+                value = payload.get(field)
+                if (
+                    value is None
+                    and field == work_id_field
+                    and work_id_field != "requestId"
+                ):
+                    value = aggregate_id
+                if value is None:
+                    raise OutboxContractError(
+                        f"work payload is missing required field {field}"
+                    )
+                command_payload[field] = value
+            for identifier in (
+                "importRunId",
+                "queueId",
+                "jobId",
+                "entityId",
+                "requestId",
+            ):
+                value = command_payload.get(identifier)
+                if value is not None:
+                    try:
+                        command_payload[identifier] = str(UUID(str(value)))
+                    except (ValueError, TypeError, AttributeError) as exc:
+                        raise OutboxContractError(
+                            f"work payload field {identifier} must be a UUID"
+                        ) from exc
+            if target_type == "geodata.location-enrichment.v1":
+                geometry_hash = command_payload.get("geometryHash")
+                reason = command_payload.get("reason")
+                if not isinstance(geometry_hash, str) or not re.fullmatch(
+                    r"[a-f0-9]{64}", geometry_hash
+                ):
+                    raise OutboxContractError(
+                        "location work geometryHash must be 64 lowercase hex characters"
+                    )
+                if not isinstance(command_payload.get("onlyMissing"), bool):
+                    raise OutboxContractError(
+                        "location work onlyMissing must be boolean"
+                    )
+                if not isinstance(reason, str) or not 1 <= len(reason) <= 80:
+                    raise OutboxContractError(
+                        "location work reason must contain 1 to 80 characters"
+                    )
+                if command_payload["entityId"] != str(aggregate_id):
+                    raise OutboxContractError(
+                        "location work entityId must match its aggregate"
+                    )
+        work_id = command_payload.get(work_id_field)
+        if not isinstance(work_id, str) or not UUID_PATTERN.fullmatch(work_id):
+            raise OutboxContractError(
+                f"work payload must carry a UUID {work_id_field}"
+            )
+        normalized_work_id = str(UUID(work_id))
+        if normalized_work_id != work_id:
+            raise OutboxContractError("work ID must use canonical UUID form")
+        if work_id_field != "requestId" and work_id != str(aggregate_id):
+            raise OutboxContractError("work ID must match its owning job row")
+        result = {
+            "envelopeVersion": 1,
+            "workId": work_id,
+            "workType": target_type,
+            "createdAt": _utc_timestamp(occurred_at),
+            "producer": producer,
+            "causationId": normalized_id,
+            "aggregate": {"type": aggregate_type, "id": str(aggregate_id)},
+            "payload": command_payload,
+        }
+        if correlation_id:
+            result["correlationId"] = correlation_id
+        return result
+    # Legacy work messages preserve their historical envelope during migration.
+    if work_route is None:
+        envelope["envelopeVersion"] = 1
+    return envelope
+
+
+def event_stream(event: dict) -> str:
+    """Return the registered target stream or the shared legacy fact stream."""
+    event_type = event.get("workType", event.get("eventType"))
+    route = TARGET_WORK_ROUTES.get(event_type)
+    return route["stream"] if route else "MYOTA_EVENTS"
