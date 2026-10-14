@@ -57,7 +57,9 @@ and preserve required safety and quality gates.
 - Preserve branch history. Reconcile divergent branches through pull requests;
   do not reset or force-push them. Do not migrate former repository branches.
 - Put documentation-only changes in `myota-docs` and governance changes in
-  `.github`. Keep relevant links and the repository map current. The former
+  `.github`. Follow those repositories' branch instructions; documentation-
+  only changes there are committed and pushed to `main`.
+- Keep relevant links and the repository map current. The former
   `.github/profile/README.md` open-issues index is retired; do not maintain
   or link to it as an issue tracker.
 
@@ -68,9 +70,9 @@ and preserve required safety and quality gates.
 - Keep implementation detail and acceptance criteria in the owning task issue.
   Link related issues across components; use parent issues and task checklists
   to coordinate cross-component work.
-- Do not rewrite issue bodies to report progress. Add successive comments for
-  implementation updates, mark checkboxes only when verified, and close an
-  issue only after its exit criteria are met.
+- Do not edit issue bodies to report progress; only check off verified tasks
+  or exit criteria. Add a new comment for each progress update; do not edit
+  previous comments. Close issues only after their exit criteria are met.
 - Update the relevant documentation and evidence, especially in `myota-docs`,
   and keep links from `.github` accurate.
 
