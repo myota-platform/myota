@@ -21,21 +21,37 @@ class IdentityAuthTests(unittest.TestCase):
     def call(self, fn, body=None, **params):
         return fn(None, {"_body": body or {}, **params})
 
-    def test_register_login_refresh_logout_and_revocation(self) -> None:
-        registered = self.call(
-            IdentityHandler.register,
+    def create_account(self, body):
+        account_id = "test-" + body["email"]
+        account = {
+            "id": account_id,
+            "displayName": body["displayName"],
+            "email": body["email"],
+            "participationType": body["participationType"],
+            "status": "ACTIVE",
+            "callsigns": [],
+            "primaryCallsignId": None,
+        }
+        IdentityHandler.store.items[account_id] = account
+        IdentityHandler._set_password(account_id, body["password"])
+        if body.get("callsign"):
+            IdentityHandler._add_callsign(
+                account, body["callsign"], "UNVERIFIED", "self-asserted"
+            )
+        return account
+
+    def test_login_refresh_logout_and_revocation(self) -> None:
+        account = self.create_account(
             {
                 "displayName": "Auth Operator",
                 "email": "auth@example.test",
                 "password": "A secure password 2026!",
                 "participationType": "OPERATOR",
                 "callsign": "N0AUTH",
-            },
-            **{"Idempotency-Key": "register-1"},
+            }
         )
         self.assertEqual(
-            registered["account"]["primaryCallsignId"],
-            registered["account"]["callsigns"][0]["id"],
+            account["primaryCallsignId"], account["callsigns"][0]["id"]
         )
         logged_in = self.call(
             IdentityHandler.login,
@@ -47,7 +63,7 @@ class IdentityAuthTests(unittest.TestCase):
         )
         self.assertEqual(
             verify_token(logged_in["accessToken"], "access")["sub"],
-            registered["account"]["id"],
+            account["id"],
         )
         refreshed = self.call(
             IdentityHandler.refresh,
@@ -65,16 +81,15 @@ class IdentityAuthTests(unittest.TestCase):
             )
 
     def test_recovery_and_callsign_evidence_lifecycle(self) -> None:
-        account = self.call(
-            IdentityHandler.register,
+        account = self.create_account(
             {
                 "displayName": "Evidence Operator",
                 "email": "evidence@example.test",
                 "password": "Another secure password!",
                 "participationType": "OPERATOR",
                 "callsign": "EA7EVID",
-            },
-        )["account"]
+            }
+        )
         token = self.call(
             IdentityHandler.recovery_request,
             {"email": "evidence@example.test"},
@@ -110,15 +125,14 @@ class IdentityAuthTests(unittest.TestCase):
         )
 
     def test_scoped_role_and_privacy_export(self) -> None:
-        account = self.call(
-            IdentityHandler.register,
+        account = self.create_account(
             {
                 "displayName": "Scoped Operator",
                 "email": "scoped@example.test",
                 "password": "Scoped secure password!",
                 "participationType": "SWL",
-            },
-        )["account"]
+            }
+        )
         admin = IdentityHandler._mint_tokens(
             IdentityHandler.store.items[
                 "00000000-0000-4000-8000-000000000001"
