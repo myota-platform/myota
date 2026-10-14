@@ -58,7 +58,7 @@ services:
       GEO_DATABASE: myota_geo
     volumes:
       - ./db/migrations:/migrations:ro
-      - ./db/bootstrap:/migrations/bootstrap:ro
+      - ./db/bootstrap:/bootstrap:ro
     depends_on:
       core-db: {condition: service_healthy}
       activity-db: {condition: service_healthy}
