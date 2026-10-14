@@ -171,6 +171,67 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertIn("uid: myota-tempo", datasources)
         self.assertIn("datasourceUid: myota-loki", datasources)
 
+    def test_logs_dashboard_uses_bounded_filters_and_privacy_safe_queries(
+        self,
+    ):
+        dashboard = json.loads(
+            (
+                ROOT
+                / "observability"
+                / "grafana"
+                / "dashboards"
+                / "myota-logs-failures.json"
+            ).read_text()
+        )
+        variables = dashboard["templating"]["list"]
+        self.assertEqual(
+            [variable["name"] for variable in variables],
+            ["environment", "service", "severity"],
+        )
+        for variable in variables:
+            options = [option["value"] for option in variable["options"]]
+            self.assertEqual(variable["type"], "custom")
+            self.assertTrue(variable["includeAll"])
+            self.assertEqual(variable["allValue"], ".*")
+            self.assertEqual(len(options), len(set(options)))
+            self.assertEqual(variable["query"], ",".join(options))
+        self.assertEqual(
+            [option["value"] for option in variables[0]["options"]],
+            ["development", "testing", "production"],
+        )
+        self.assertTrue(
+            all(
+                option["value"].startswith("myota-")
+                for option in variables[1]["options"]
+            )
+        )
+        expressions = [
+            target.get("expr", "")
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+        ]
+        dashboard_json = json.dumps(dashboard)
+        self.assertNotIn("correlation_id", dashboard_json)
+        self.assertNotIn("component", dashboard_json)
+        self.assertTrue(
+            all("${component" not in expression for expression in expressions)
+        )
+        self.assertTrue(
+            all(
+                "${correlation_id" not in expression
+                for expression in expressions
+            )
+        )
+        self.assertIn('severity_text=~"WARNING|ERROR"', "\n".join(expressions))
+        errors_panel = next(
+            panel for panel in dashboard["panels"] if panel["id"] == 3
+        )
+        self.assertEqual(errors_panel["title"], "Errors by service")
+        self.assertIn(
+            "sum by (service_name)",
+            errors_panel["targets"][0]["expr"],
+        )
+
     def test_seaweed_dashboard_is_valid_and_rolls_out_with_helm(self):
         dashboard_path = (
             ROOT
