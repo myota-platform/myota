@@ -92,7 +92,9 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             )
         )
         self.assertTrue(
-            any("myota_programmes{" in expression for expression in expressions)
+            any(
+                "myota_programmes{" in expression for expression in expressions
+            )
         )
         self.assertFalse(
             any(
@@ -142,6 +144,19 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertIn("trace:duration > 1s", query_text)
         self.assertIn('resource.service.namespace = "myota"', query_text)
         self.assertTrue(all("metricsQuery" not in query for query in queries))
+        service_filter = dashboard["templating"]["list"][0]
+        service_names = [
+            option["value"] for option in service_filter["options"]
+        ]
+        self.assertEqual(service_filter["name"], "service")
+        self.assertEqual(service_filter["type"], "custom")
+        self.assertTrue(service_filter["includeAll"])
+        self.assertEqual(service_filter["allValue"], ".*")
+        self.assertEqual(service_names, sorted(set(service_names)))
+        self.assertTrue(
+            all(name.startswith("myota-") for name in service_names)
+        )
+        self.assertEqual(service_filter["query"], ",".join(service_names))
         helm_template = (
             ROOT / "helm/myota/templates/observability.yaml"
         ).read_text()
@@ -176,11 +191,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         dashboard = json.loads(dashboard_path.read_text())
         chart_dashboard = json.loads(chart_dashboard_path.read_text())
         deployment_template = (
-            ROOT
-            / "helm"
-            / "myota"
-            / "templates"
-            / "observability.yaml"
+            ROOT / "helm" / "myota" / "templates" / "observability.yaml"
         ).read_text()
 
         self.assertEqual(dashboard, chart_dashboard)
@@ -193,9 +204,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
 
     def test_loki_uses_s3_retention_and_native_otlp_pipeline(self):
         compose_config = (ROOT / "observability" / "loki.yaml").read_text()
-        helm_config = (
-            ROOT / "helm/myota/observability/loki.yaml"
-        ).read_text()
+        helm_config = (ROOT / "helm/myota/observability/loki.yaml").read_text()
         compose_collector = (
             ROOT / "observability" / "otel-collector.yaml"
         ).read_text()
