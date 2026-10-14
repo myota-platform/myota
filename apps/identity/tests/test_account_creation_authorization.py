@@ -164,6 +164,70 @@ class IdentityAccountCreationAuthorizationTests(unittest.TestCase):
             )
         self.assertEqual(len(IdentityHandler.store.items), before)
 
+    def test_identity_admin_cannot_regrant_equal_authority_role(self):
+        actor = self.new_identity_admin()
+        before = len(IdentityHandler.store.items)
+        with self.assertRaisesRegex(PermissionError, "strictly below"):
+            self.request(
+                {
+                    "displayName": "Equal authority attempt",
+                    "email": "equal-authority@example.test",
+                    "participationType": "OPERATOR",
+                    "roles": [{"role": "IDENTITY_ADMIN"}],
+                },
+                actor,
+            )
+        self.assertEqual(len(IdentityHandler.store.items), before)
+
+    def test_identity_admin_can_preserve_or_revoke_an_existing_higher_role(
+        self,
+    ):
+        actor = self.new_identity_admin()
+        target = {
+            "id": "another-identity-admin",
+            "displayName": "Another Identity Admin",
+            "email": "another-identity-admin@example.test",
+            "participationType": "OPERATOR",
+            "status": "ACTIVE",
+            "callsigns": [],
+            "primaryCallsignId": None,
+        }
+        IdentityHandler.store.items[target["id"]] = target
+        target_assignment = {
+            "id": "target-identity-role",
+            "accountId": target["id"],
+            "role": "IDENTITY_ADMIN",
+            "programmeSlug": None,
+            "jurisdiction": None,
+            "entityType": None,
+            "scopes": IdentityHandler._role_definition("IDENTITY_ADMIN")[
+                "scopes"
+            ],
+            "createdAt": "2026-01-01T00:00:00Z",
+            "validTo": None,
+        }
+        IdentityHandler._bucket("roles")[target_assignment["id"]] = (
+            target_assignment
+        )
+        request = {
+            "Authorization": "Bearer " + self.token(actor),
+            "_http": "1",
+        }
+
+        retained = IdentityHandler._replace_roles(
+            target["id"],
+            [{"code": "IDENTITY_ADMIN"}, {"code": "PARTICIPANT"}],
+            request,
+        )
+        self.assertEqual(
+            {role["role"] for role in retained},
+            {"IDENTITY_ADMIN", "PARTICIPANT"},
+        )
+        revoked = IdentityHandler._replace_roles(
+            target["id"], [{"code": "PARTICIPANT"}], request
+        )
+        self.assertEqual([role["role"] for role in revoked], ["PARTICIPANT"])
+
     def test_global_operator_cannot_grant_equal_global_operator_role(self):
         before = len(IdentityHandler.store.items)
         with self.assertRaisesRegex(PermissionError, "strictly below"):
@@ -208,6 +272,25 @@ class IdentityAccountCreationAuthorizationTests(unittest.TestCase):
                 },
                 scopes=("identity.accounts.create",),
             )
+
+    def test_admin_account_list_returns_identity_resolved_effective_scopes(
+        self,
+    ):
+        result = IdentityHandler.list_admin_accounts(
+            None,
+            {
+                "Authorization": "Bearer " + self.token(self.root),
+                "_http": "1",
+                "_path": "/v1/identity/admin/accounts",
+            },
+        )
+        root = next(
+            item for item in result["items"] if item["id"] == self.root["id"]
+        )
+        self.assertEqual(
+            root["scopes"], IdentityHandler._scopes(self.root["id"])
+        )
+        self.assertIn("*", root["scopes"])
 
     def test_access_token_for_deactivated_account_is_rejected(self):
         token = self.token(self.root)

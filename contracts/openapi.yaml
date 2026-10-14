@@ -1452,6 +1452,10 @@ components:
         status: { type: string, enum: [PENDING_SETUP, ACTIVE, DEACTIVATED] }
         callsigns: { type: array, items: { type: object } }
         roles: { type: array, items: { $ref: '#/components/schemas/RoleAssignment' } }
+        scopes:
+          type: array
+          description: Effective permissions resolved by Identity for the account.
+          items: { type: string }
     RegisterAccount:
       type: object
       required: [displayName, email, password, participationType]

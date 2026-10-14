@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAppStore } from "../stores/app";
 import { availablePages, pageFor } from "../lib/adminNavigation";
@@ -57,6 +57,14 @@ const sections = computed(() =>
     .filter((section) => section.items.length),
 );
 const current = computed(() => pageFor(route.path));
+watch(
+  () => store.account,
+  async (account) => {
+    const page = pageFor(route.path);
+    if (account && page && !page.allowed(account))
+      await router.replace("/access-denied");
+  },
+);
 const pageTitle = computed(
   () => current.value?.title || String(route.meta.title || "Administration"),
 );
@@ -77,6 +85,16 @@ async function signOut(): Promise<void> {
   store.signOut();
   await router.push("/login");
 }
+async function sessionInvalid(): Promise<void> {
+  store.signOut();
+  if (route.path !== "/login") await router.replace("/login");
+}
+onMounted(() =>
+  window.addEventListener("myota:session-invalid", sessionInvalid),
+);
+onUnmounted(() =>
+  window.removeEventListener("myota:session-invalid", sessionInvalid),
+);
 </script>
 <template>
   <a class="skip-link" href="#workspace-content">Skip to workspace</a>

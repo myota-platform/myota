@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
 from typing import Any
@@ -810,7 +811,11 @@ class IdentityHandler(JsonHandler):
         status = query.get("status", [None])[0]
         search = query.get("q", [""])[0].casefold()
         accounts = [
-            {**account, "roles": IdentityHandler._roles(account["id"])}
+            {
+                **account,
+                "roles": IdentityHandler._roles(account["id"]),
+                "scopes": IdentityHandler._scopes(account["id"]),
+            }
             for account in IdentityHandler.store.items.values()
         ]
         if status:
@@ -960,10 +965,10 @@ class IdentityHandler(JsonHandler):
         account_id: str, assignments: list[dict[str, Any]], p: dict[str, str]
     ) -> list[dict[str, Any]]:
         claims = IdentityHandler._admin_authorize(p, "identity.roles.assign")
-        normalized = IdentityHandler._validate_role_grants(
-            assignments, claims, account_id
-        )
         current = IdentityHandler._roles(account_id)
+        normalized = IdentityHandler._validate_role_grants(
+            assignments, claims, account_id, current
+        )
         current_global = any(
             item.get("role") == "GLOBAL_OPERATOR" for item in current
         )
@@ -1015,12 +1020,22 @@ class IdentityHandler(JsonHandler):
         assignments: list[dict[str, Any]],
         claims: dict[str, Any],
         target_account_id: str,
+        current_assignments: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         if claims and claims.get("sub") == target_account_id:
             raise PermissionError(
                 "actors cannot change their own role assignments"
             )
         normalized: list[dict[str, Any]] = []
+        preserved = Counter(
+            (
+                str(item.get("role", "")).upper(),
+                item.get("programmeSlug"),
+                item.get("jurisdiction"),
+                item.get("entityType"),
+            )
+            for item in current_assignments or []
+        )
         for assignment in assignments:
             if not isinstance(assignment, dict):
                 raise ValueError("each role assignment must be an object")
@@ -1032,22 +1047,41 @@ class IdentityHandler(JsonHandler):
                 raise ValueError(f"unknown role: {code}")
             actor_scopes = set(claims.get("scp", [])) if claims else set()
             target_scopes = set(definition.get("scopes", []))
-            may_grant = ("*" in actor_scopes and "*" not in target_scopes) or (
-                "*" not in target_scopes and target_scopes < actor_scopes
+            may_grant = IdentityHandler._may_grant_role(
+                actor_scopes, target_scopes
             )
-            if claims and not may_grant:
+            normalized_assignment = {
+                "code": code,
+                "programmeSlug": assignment.get("programmeSlug"),
+                "jurisdiction": assignment.get("jurisdiction"),
+                "entityType": assignment.get("entityType"),
+            }
+            assignment_key = (
+                code,
+                normalized_assignment["programmeSlug"],
+                normalized_assignment["jurisdiction"],
+                normalized_assignment["entityType"],
+            )
+            if not may_grant and preserved[assignment_key] > 0:
+                preserved[assignment_key] -= 1
+            elif claims and not may_grant:
                 raise PermissionError(
                     "actors may grant only roles strictly below their authority"
                 )
-            normalized.append(
-                {
-                    "code": code,
-                    "programmeSlug": assignment.get("programmeSlug"),
-                    "jurisdiction": assignment.get("jurisdiction"),
-                    "entityType": assignment.get("entityType"),
-                }
-            )
+            normalized.append(normalized_assignment)
         return normalized
+
+    @staticmethod
+    def _may_grant_role(
+        actor_scopes: set[str], target_scopes: set[str]
+    ) -> bool:
+        # identity.me is a baseline response scope, not role-grant authority.
+        actor_privileges = actor_scopes - {"identity.me"}
+        if "*" in target_scopes:
+            return False
+        if "*" in actor_privileges:
+            return True
+        return target_scopes < actor_privileges
 
     @staticmethod
     def list_security_events(
@@ -1270,8 +1304,8 @@ class IdentityHandler(JsonHandler):
             raise PermissionError("actors cannot assign roles to themselves")
         actor_scopes = set(claims.get("scp", [])) if claims else set()
         target_scopes = set(definition.get("scopes", []))
-        may_grant = ("*" in actor_scopes and "*" not in target_scopes) or (
-            "*" not in target_scopes and target_scopes < actor_scopes
+        may_grant = IdentityHandler._may_grant_role(
+            actor_scopes, target_scopes
         )
         if claims and not may_grant:
             raise PermissionError(

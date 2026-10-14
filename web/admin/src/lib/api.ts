@@ -117,8 +117,19 @@ export async function apiRequest<T>(
     headers,
     ...(method === "GET" ? { cache: "no-store" as RequestCache } : {}),
   });
-  if (response.status === 403 && retry && (await refreshSession()))
+  if (
+    [401, 403].includes(response.status) &&
+    retry &&
+    token &&
+    (await refreshSession())
+  )
     return apiRequest<T>(path, options, false);
+  if (token && typeof window !== "undefined") {
+    if (response.status === 403 && path !== "/v1/identity/me")
+      window.dispatchEvent(new Event("myota:authorization-denied"));
+    if (response.status === 401)
+      window.dispatchEvent(new Event("myota:session-invalid"));
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok)
     throw new ApiError(
