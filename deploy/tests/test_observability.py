@@ -234,7 +234,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
                 for expression in expressions
             )
         )
-        self.assertIn('severity_text=~"WARNING|ERROR"', "\n".join(expressions))
+        self.assertIn('severity_text=~"WARN|WARNING|ERROR"', "\n".join(expressions))
         # Application namespace is a fixed telemetry resource attribute, not
         # the Kubernetes release namespace. Substitution hid Test failures.
         helm_logs = (
