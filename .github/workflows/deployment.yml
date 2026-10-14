@@ -3,12 +3,6 @@ name: MyOTA deployment checks and image
 on:
   push:
     branches: [main, testing, 'feature/**', 'fix/**']
-    paths-ignore:
-      - "deploy/helm/**"
-      - ".github/workflows/helm-render.yml"
-      - ".github/workflows/sync-image-digests.yml"
-      - "scripts/sync-image-digests.py"
-      - "**/*.md"
     paths:
       - "deploy/**"
       - ".github/workflows/**"

@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - "deploy/helm/**"
-      - ".github/workflows/helm-render.yml"
+      - ".github/workflows/helm-validation.yml"
   pull_request:
     branches: [main, testing]
 
