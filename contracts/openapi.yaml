@@ -73,6 +73,85 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Get the authenticated account and scopes
       responses: { '200': { description: Authenticated account } }
+  /v1/identity/me/profile:
+    patch:
+      tags: [Identity]
+      security: [{ bearerAuth: [] }]
+      summary: Update the authenticated account's private profile fields
+      operationId: patchIdentityProfile
+      description: >-
+        Only the authenticated account can update its own website and biography.
+        The biography is returned as Markdown source; clients must render a safe
+        Markdown subset, strip raw HTML, and sanitize links. Profile fields are
+        private by default and are not exposed through anonymous public reads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountProfileUpdate' }
+      responses:
+        '200': { description: Updated profile fields }
+        '400': { description: Invalid profile fields }
+        '403': { description: Authentication is missing or the caller is not the account owner }
+  /v1/identity/me/profile-image:
+    get:
+      tags: [Identity]
+      security: [{ bearerAuth: [] }]
+      summary: Read the authenticated account's private profile image
+      operationId: getIdentityProfileImage
+      description: Returns a normalized WebP image with private, no-store caching. No public or signed storage URL is issued.
+      responses:
+        '200':
+          description: Normalized private profile image
+          content: { image/webp: { schema: { type: string, format: binary } } }
+        '403': { description: Authentication is required }
+        '404': { description: No profile image is set }
+    put:
+      tags: [Identity]
+      security: [{ bearerAuth: [] }]
+      summary: Upload or replace the authenticated account's profile image
+      operationId: putIdentityProfileImage
+      description: >-
+        Upload raw JPEG, PNG, or WebP bytes (not multipart). Identity validates
+        decoded content, rejects animation, SVG and unsafe dimensions, crops and
+        resizes to a square 512 by 512 WebP, strips metadata, and stores the
+        result in the private Identity profile-image bucket. Input is limited
+        to 5 MiB and 4096 by 4096 pixels; output is limited to 256 KiB. Reads
+        remain authenticated through this API; bucket names, object keys,
+        credentials, and permanent URLs are never returned.
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        '200': { description: Profile image uploaded or replaced, including safe image metadata }
+        '400': { description: Malformed, animated, unsafe, or unsupported image content }
+        '403': { description: Authentication is required }
+        '413': { description: Input exceeds 5 MiB }
+    delete:
+      tags: [Identity]
+      security: [{ bearerAuth: [] }]
+      summary: Remove the authenticated account's profile image
+      operationId: deleteIdentityProfileImage
+      responses:
+        '200': { description: Profile image reference cleared; object cleanup is retried by Identity maintenance }
+        '403': { description: Authentication is required }
+  /v1/identity/accounts/{accountId}/profile-image:
+    get:
+      tags: [Identity]
+      security: [{ bearerAuth: [] }]
+      summary: Read an account profile image as the owner or an Identity administrator
+      operationId: getAccountProfileImage
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      description: Authenticated owner or Identity administrator only. Returns private, no-store WebP bytes; no public URL or storage credential is issued.
+      responses:
+        '200':
+          description: Normalized private profile image
+          content: { image/webp: { schema: { type: string, format: binary } } }
+        '403': { description: Caller is not the account owner or an Identity administrator }
+        '404': { description: Account or profile image not found }
   /v1/identity/admin/accounts:
     get:
       tags: [Identity]
@@ -814,6 +893,8 @@ paths:
                 email: { type: string, format: email, nullable: true }
                 participationType: { type: string, enum: [OPERATOR, SWL] }
                 status: { type: string, enum: [ACTIVE, DEACTIVATED] }
+                websiteUrl: { type: [string, 'null'], maxLength: 2048, format: uri, pattern: '^[Hh][Tt][Tt][Pp][Ss]?://' }
+                biographyMarkdown: { type: [string, 'null'], maxLength: 2000 }
                 anonymize: { type: boolean, description: Anonymize and revoke sessions when status is DEACTIVATED }
                 password: { type: string, minLength: 12, writeOnly: true }
                 roles: { type: array, items: { $ref: '#/components/schemas/RoleGrant' } }
@@ -1450,12 +1531,37 @@ components:
         email: { type: string, format: email, nullable: true }
         participationType: { type: string, enum: [OPERATOR, SWL] }
         status: { type: string, enum: [PENDING_SETUP, ACTIVE, DEACTIVATED] }
+        websiteUrl: { type: [string, 'null'], maxLength: 2048, format: uri, pattern: '^[Hh][Tt][Tt][Pp][Ss]?://', description: Optional personal website. Only HTTP and HTTPS are accepted; embedded credentials are rejected. }
+        biographyMarkdown: { type: [string, 'null'], maxLength: 2000, description: Optional Markdown source. Clients must strip raw HTML and sanitize rendered output. }
+        profileImage:
+          anyOf:
+            - { $ref: '#/components/schemas/ProfileImageMetadata' }
+            - { type: 'null' }
         callsigns: { type: array, items: { type: object } }
         roles: { type: array, items: { $ref: '#/components/schemas/RoleAssignment' } }
         scopes:
           type: array
           description: Effective permissions resolved by Identity for the account.
           items: { type: string }
+    AccountProfileUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: Send null or an empty string to clear a field; omitted fields are unchanged.
+      properties:
+        websiteUrl: { type: [string, 'null'], maxLength: 2048, format: uri, pattern: '^[Hh][Tt][Tt][Pp][Ss]?://', description: Only HTTP and HTTPS are accepted; embedded credentials are rejected. }
+        biographyMarkdown: { type: [string, 'null'], maxLength: 2000, description: Markdown source; raw HTML must be stripped during rendering. }
+    ProfileImageMetadata:
+      type: object
+      additionalProperties: false
+      required: [id, contentType, width, height, updatedAt]
+      description: Server-managed opaque profile-image reference and safe rendition metadata; no bucket, object key, or URL is exposed.
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        contentType: { type: string, const: image/webp }
+        width: { type: integer, const: 512 }
+        height: { type: integer, const: 512 }
+        updatedAt: { type: string, format: date-time }
     RegisterAccount:
       type: object
       required: [displayName, email, password, participationType]

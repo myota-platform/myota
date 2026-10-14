@@ -23,6 +23,18 @@ try:
             job_type="identity-retention",
         )
         removed = IdentityHandler.cleanup_expired()
+        try:
+            removed_profile_images = IdentityHandler.cleanup_profile_images()
+        except Exception as exc:
+            log_event(
+                logging.getLogger(__name__),
+                logging.WARNING,
+                "job.failed",
+                component="identity-maintenance",
+                job_type="profile-image-orphan-cleanup",
+                error_type=type(exc).__name__,
+            )
+            removed_profile_images = 0
         IdentityHandler.store.persist()
         log_event(
             logging.getLogger(__name__),
@@ -31,6 +43,7 @@ try:
             component="identity-maintenance",
             job_type="identity-retention",
             removed_count=removed if isinstance(removed, int) else 0,
+            profile_image_objects_removed=removed_profile_images,
         )
         time.sleep(interval)
 except KeyboardInterrupt:

@@ -13,6 +13,7 @@ import secrets
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from contextvars import ContextVar
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from myota_logging import (
 from typing import Any, Callable, Iterator
 
 MAX_BODY_BYTES = int(os.environ.get("MYOTA_MAX_BODY_BYTES", "1048576"))
+MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024
 _HTTP_METRIC_BUCKETS_MS = (
     5,
     10,
@@ -436,6 +438,32 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return value
 
 
+class RequestTooLarge(ValueError):
+    """Request body exceeds the limit for its route."""
+
+
+def read_bytes(handler: BaseHTTPRequestHandler, max_bytes: int) -> bytes:
+    try:
+        length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError as exc:
+        raise ValueError("invalid Content-Length") from exc
+    if length <= 0:
+        raise ValueError("request body is required")
+    if length > max_bytes:
+        raise RequestTooLarge("request body exceeds the route limit")
+    content = handler.rfile.read(length)
+    if len(content) != length:
+        raise ValueError("request body is incomplete")
+    return content
+
+
+@dataclass(frozen=True)
+class BinaryResponse:
+    status: int
+    content_type: str
+    body: bytes
+
+
 class JsonHandler(BaseHTTPRequestHandler):
     service = "myota-service"
     routes: dict[
@@ -548,6 +576,34 @@ class JsonHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_bytes(self, status: int, content_type: str, body: bytes) -> None:
+        self._log_http_completed(status)
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("X-Request-ID", self.request_id)
+        self.send_header("X-Correlation-ID", self.correlation_id)
+        if self._http_span and self._http_span.trace_id:
+            self.send_header("X-Trace-ID", self._http_span.trace_id)
+        self.send_header(
+            "Access-Control-Expose-Headers",
+            "X-Request-ID, X-Correlation-ID, X-Trace-ID",
+        )
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, Idempotency-Key, X-Request-ID, X-Correlation-ID, traceparent, tracestate",
+        )
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        )
+        self.send_header("API-Version", "v1")
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
     def do_OPTIONS(self) -> None:
         self.command = "OPTIONS"
         self._request_started_at = time.perf_counter()
@@ -634,17 +690,26 @@ class JsonHandler(BaseHTTPRequestHandler):
             if matched:
                 try:
                     self.current_route = (method, pattern)
-                    body = (
-                        read_json(self)
-                        if method in {"POST", "PUT", "PATCH", "DELETE"}
-                        else {}
-                    )
+                    raw_body = None
+                    if method == "PUT" and pattern.endswith("/profile-image"):
+                        raw_body = read_bytes(self, MAX_PROFILE_IMAGE_BYTES)
+                        body = {}
+                    else:
+                        body = (
+                            read_json(self)
+                            if method in {"POST", "PUT", "PATCH", "DELETE"}
+                            else {}
+                        )
                     with bind_correlation_id(self.correlation_id):
                         result = fn(
                             self,
                             {
                                 **params,
                                 "_body": body,
+                                "_raw_body": raw_body,
+                                "Content-Type": self.headers.get(
+                                    "Content-Type", ""
+                                ),
                                 "_path": self.path,
                                 "Idempotency-Key": self.headers.get(
                                     "Idempotency-Key"
@@ -659,13 +724,26 @@ class JsonHandler(BaseHTTPRequestHandler):
                                 "_http": "1",
                             },
                         )
-                    status = (
-                        result.pop("_status", 200)
-                        if isinstance(result, dict)
-                        else 200
-                    )
                     self.store.persist()
-                    self._send(status, result)
+                    if isinstance(result, BinaryResponse):
+                        self._send_bytes(
+                            result.status,
+                            result.content_type,
+                            result.body,
+                        )
+                    else:
+                        status = (
+                            result.pop("_status", 200)
+                            if isinstance(result, dict)
+                            else 200
+                        )
+                        self._send(status, result)
+                except RequestTooLarge:
+                    self._error(
+                        413,
+                        "payload_too_large",
+                        "profile image upload exceeds 5 MiB",
+                    )
                 except ValueError as exc:
                     self._error(400, "invalid_request", str(exc))
                 except KeyError as exc:
