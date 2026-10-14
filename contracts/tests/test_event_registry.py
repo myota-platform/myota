@@ -457,7 +457,7 @@ class EventRegistryTests(unittest.TestCase):
 
     def test_outer_event_envelope_rejects_relay_mutable_fields(self):
         schema = json.loads(
-            (ROOT / "contracts/schemas/event-envelope.schema.json").read_text(
+            (ROOT / "schemas/event-envelope.schema.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -471,7 +471,7 @@ class EventRegistryTests(unittest.TestCase):
         self.assertEqual(schema["properties"]["eventId"]["format"], "uuid")
         self.assertEqual(schema["properties"]["occurredAt"]["pattern"], "Z$")
         work_schema = json.loads(
-            (ROOT / "contracts/schemas/work-command.schema.json").read_text(
+            (ROOT / "schemas/work-command.schema.json").read_text(
                 encoding="utf-8"
             )
         )
