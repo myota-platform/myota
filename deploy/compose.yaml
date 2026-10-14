@@ -57,9 +57,8 @@ services:
       ACTIVITY_DATABASE: myota_activity
       GEO_DATABASE: myota_geo
     volumes:
-      - ./db/migrations:/migrations/migrations:ro
+      - ./db/migrations:/migrations:ro
       - ./db/bootstrap:/migrations/bootstrap:ro
-      - ./db/migrations/run.sh:/migrations/run.sh:ro
     depends_on:
       core-db: {condition: service_healthy}
       activity-db: {condition: service_healthy}
@@ -419,12 +418,13 @@ services:
     profiles: [observability]
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
-    command: >-
-      if aws s3api head-bucket --bucket myota-loki
-      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
-      >/dev/null 2>&1; then exit 0; fi;
-      aws s3api create-bucket --bucket myota-loki --acl private
-      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+    command:
+      - >-
+        if aws s3api head-bucket --bucket myota-loki
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+        >/dev/null 2>&1; then exit 0; fi;
+        aws s3api create-bucket --bucket myota-loki --acl private
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
     environment:
       AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
       AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
@@ -436,12 +436,13 @@ services:
     image: public.ecr.aws/aws-cli/aws-cli:2.27.41
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
-    command: >-
-      if aws s3api head-bucket --bucket myota-user-profile-images
-      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
-      >/dev/null 2>&1; then exit 0; fi;
-      aws s3api create-bucket --bucket myota-user-profile-images --acl private
-      --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+    command:
+      - >-
+        if aws s3api head-bucket --bucket myota-user-profile-images
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+        >/dev/null 2>&1; then exit 0; fi;
+        aws s3api create-bucket --bucket myota-user-profile-images --acl private
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
     environment:
       AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
       AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
@@ -483,34 +484,35 @@ services:
     profiles: [observability]
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
-    command: |
-      psql --no-password -h core-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-      \getenv monitor_password MYOTA_PG_CORE_MONITOR_PASSWORD
-      SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
-      \gexec
-      ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
-      GRANT CONNECT ON DATABASE myota_core TO myota_observability;
-      GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
-      SQL
-      psql --no-password -h activity-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-      \getenv monitor_password MYOTA_PG_ACTIVITY_MONITOR_PASSWORD
-      SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
-      \gexec
-      ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
-      GRANT CONNECT ON DATABASE myota_activity TO myota_observability;
-      GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
-      SQL
-      psql --no-password -h geo-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-      \getenv monitor_password MYOTA_PG_GEO_MONITOR_PASSWORD
-      SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
-      \gexec
-      ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
-      GRANT CONNECT ON DATABASE myota_geo TO myota_observability;
-      GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
-      SQL
+    command:
+      - |
+        psql --no-password -h core-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv monitor_password MYOTA_PG_CORE_MONITOR_PASSWORD
+        SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
+        \gexec
+        ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
+        GRANT CONNECT ON DATABASE myota_core TO myota_observability;
+        GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
+        SQL
+        psql --no-password -h activity-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv monitor_password MYOTA_PG_ACTIVITY_MONITOR_PASSWORD
+        SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
+        \gexec
+        ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
+        GRANT CONNECT ON DATABASE myota_activity TO myota_observability;
+        GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
+        SQL
+        psql --no-password -h geo-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv monitor_password MYOTA_PG_GEO_MONITOR_PASSWORD
+        SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
+        \gexec
+        ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
+        GRANT CONNECT ON DATABASE myota_geo TO myota_observability;
+        GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
+        SQL
     environment:
       PGPASSWORD: myota-dev-only
       MYOTA_PG_CORE_MONITOR_PASSWORD: ${MYOTA_PG_CORE_MONITOR_PASSWORD:-myota-dev-monitor-core}

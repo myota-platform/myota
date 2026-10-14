@@ -76,12 +76,14 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         ]
         init = services["loki-bucket-init"]
         self.assertIn("aws-cli", init["image"])
-        self.assertIn("aws s3api head-bucket", init["command"])
-        self.assertIn("aws s3api create-bucket", init["command"])
-        self.assertNotIn("mc ", init["command"])
-        self.assertIn("--acl private", init["command"])
-        self.assertIn("$$AWS_ENDPOINT_URL", init["command"])
-        self.assertIn("$$AWS_DEFAULT_REGION", init["command"])
+        self.assertEqual(len(init["command"]), 1)
+        script = init["command"][0]
+        self.assertIn("aws s3api head-bucket", script)
+        self.assertIn("aws s3api create-bucket", script)
+        self.assertNotIn("mc ", script)
+        self.assertIn("--acl private", script)
+        self.assertIn("$$AWS_ENDPOINT_URL", script)
+        self.assertIn("$$AWS_DEFAULT_REGION", script)
         self.assertEqual(
             init["environment"]["AWS_ACCESS_KEY_ID"],
             services["loki"]["environment"]["AWS_ACCESS_KEY_ID"],
@@ -98,6 +100,29 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             services["loki"]["depends_on"]["loki-bucket-init"]["condition"],
             "service_completed_successfully",
         )
+
+    def test_compose_bootstrap_scripts_are_single_shell_arguments_and_sql_is_reachable(
+        self,
+    ):
+        import yaml
+
+        services = yaml.safe_load((ROOT / "compose.yaml").read_text())[
+            "services"
+        ]
+        for name in (
+            "loki-bucket-init",
+            "profile-image-bucket-init",
+            "postgres-monitor-role-init",
+        ):
+            self.assertEqual(services[name]["entrypoint"], ["/bin/sh", "-ec"])
+            self.assertIsInstance(services[name]["command"], list)
+            self.assertEqual(len(services[name]["command"]), 1)
+        migrations = services["migrations"]
+        self.assertIn("./db/migrations:/migrations:ro", migrations["volumes"])
+        self.assertTrue(
+            (ROOT / "db/migrations/core/001_core_baseline.sql").is_file()
+        )
+        self.assertTrue((ROOT / "db/migrations/run.sh").is_file())
 
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
