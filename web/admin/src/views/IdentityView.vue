@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { apiRequest } from "../lib/api";
+import { ApiError, apiRequest } from "../lib/api";
 import { myotaClient } from "../lib/myotaClient";
 import {
   hasAnyScope,
@@ -53,23 +53,51 @@ const securityEvents = ref<SecurityEvent[]>([]);
 const selectedAccount = ref<User | null>(null);
 const selectedRole = ref<Role | null>(null);
 const search = ref("");
+const creatingAccount = ref(false);
+const accountCreateForm = reactive({
+  displayName: "",
+  email: "",
+  participationType: "OPERATOR",
+  callsign: "",
+  roles: [] as string[],
+});
 const canManageUsers = computed(() =>
   hasAnyScope(store.account, "identity.admin"),
+);
+const canCreateAccounts = computed(() =>
+  hasAnyScope(store.account, "identity.accounts.create"),
+);
+const canGrantAdditionalRoles = computed(
+  () =>
+    canCreateAccounts.value &&
+    hasAnyScope(store.account, "identity.roles.assign"),
 );
 const canManageRoles = computed(() =>
   hasAnyScope(store.account, "identity.roles.manage"),
 );
+const canViewRoleDefinitions = computed(
+  () => canManageUsers.value || canManageRoles.value,
+);
 const tabs = computed(() => [
-  ...(canManageUsers.value ? [{ id: "users", label: "Users" }] : []),
-  { id: "roles", label: "Roles & permissions" },
+  ...(canManageUsers.value || canCreateAccounts.value
+    ? [{ id: "users", label: "Users" }]
+    : []),
+  ...(canViewRoleDefinitions.value
+    ? [{ id: "roles", label: "Roles & permissions" }]
+    : []),
   ...(canManageUsers.value
     ? [{ id: "security", label: "Security events" }]
     : []),
 ]);
+const creatableRoles = computed(() =>
+  roles.value.filter(
+    (role) => role.code !== "PARTICIPANT" && mayGrantRole(store.account, role),
+  ),
+);
 const activeTab = computed(() =>
   tabs.value.some((tab) => tab.id === route.query.tab)
     ? String(route.query.tab)
-    : tabs.value[0].id,
+    : (tabs.value[0]?.id ?? ""),
 );
 const accountForm = reactive({
   displayName: "",
@@ -149,9 +177,11 @@ async function fetchData(): Promise<void> {
           `/v1/identity/admin/accounts?pageSize=100&q=${encodeURIComponent(search.value)}`,
         )
       : Promise.resolve({ items: [] }),
-    apiRequest<{ items: Role[]; permissions: Permission[] }>(
-      "/v1/identity/admin/roles",
-    ),
+    canViewRoleDefinitions.value || canCreateAccounts.value
+      ? apiRequest<{ items: Role[]; permissions: Permission[] }>(
+          "/v1/identity/admin/roles",
+        )
+      : Promise.resolve({ items: [], permissions: [] }),
     canManageUsers.value
       ? apiRequest<{ items: SecurityEvent[] }>(
           "/v1/identity/admin/security-events?pageSize=20",
@@ -165,6 +195,62 @@ async function fetchData(): Promise<void> {
 }
 async function load(): Promise<void> {
   await feedback.run(fetchData);
+}
+async function createAccount(): Promise<void> {
+  if (!canCreateAccounts.value) return;
+  await feedback.run(
+    async () => {
+      const payload: Record<string, unknown> = {
+        displayName: accountCreateForm.displayName.trim(),
+        email: accountCreateForm.email.trim(),
+        participationType: accountCreateForm.participationType,
+      };
+      if (
+        accountCreateForm.participationType === "OPERATOR" &&
+        accountCreateForm.callsign.trim()
+      )
+        payload.callsign = accountCreateForm.callsign.trim();
+      if (canGrantAdditionalRoles.value && accountCreateForm.roles.length)
+        payload.roles = accountCreateForm.roles
+          .filter((code) =>
+            creatableRoles.value.some((role) => role.code === code),
+          )
+          .map((role) => ({ role }));
+      let created: User;
+      try {
+        created = await myotaClient.createIdentityAccount<User>(payload);
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.status === 403)
+          throw new Error(
+            "Identity denied account creation or one of the requested role grants. Your permissions may have changed; refresh and try again.",
+          );
+        if (
+          cause instanceof ApiError &&
+          cause.status === 400 &&
+          /email already exists/i.test(cause.message)
+        )
+          throw new Error(
+            "An account with this email already exists. Search for the existing account instead.",
+          );
+        throw new Error(
+          "Account creation failed. Check the fields and try again.",
+        );
+      }
+      accountCreateForm.displayName = "";
+      accountCreateForm.email = "";
+      accountCreateForm.participationType = "OPERATOR";
+      accountCreateForm.callsign = "";
+      accountCreateForm.roles = [];
+      creatingAccount.value = false;
+      await fetchData();
+      return created;
+    },
+    {
+      mutation: true,
+      success:
+        "Account created with status PENDING_SETUP. No invitation was sent; invitation delivery is not available yet.",
+    },
+  );
 }
 async function saveAccount(): Promise<void> {
   const account = selectedAccount.value;
@@ -265,15 +351,120 @@ onMounted(load);
   </nav>
   <div v-if="activeTab === 'users'" class="identity-grid">
     <article class="panel">
-      <h2>Users</h2>
-      <form class="toolbar" role="search" @submit.prevent="load">
+      <div class="panel-heading">
+        <h2>Users</h2>
+        <button
+          v-if="canCreateAccounts"
+          class="primary"
+          type="button"
+          :disabled="saving"
+          @click="creatingAccount = !creatingAccount"
+        >
+          {{ creatingAccount ? "Cancel account creation" : "Create account" }}
+        </button>
+      </div>
+      <form
+        v-if="creatingAccount && canCreateAccounts"
+        class="form-grid account-create-form"
+        :aria-busy="saving"
+        @submit.prevent="createAccount"
+      >
+        <h3 class="wide">Create an account</h3>
+        <p class="field-help wide">
+          New accounts start in PENDING_SETUP with the participant role. No
+          password is requested or set.
+        </p>
+        <fieldset class="editor-fields wide form-grid" :disabled="saving">
+          <label
+            >Display name<input
+              v-model="accountCreateForm.displayName"
+              autocomplete="name"
+              required
+              maxlength="120"
+          /></label>
+          <label
+            >Email<input
+              v-model="accountCreateForm.email"
+              type="email"
+              autocomplete="email"
+              required
+              maxlength="254"
+          /></label>
+          <label
+            >Participant type<select
+              v-model="accountCreateForm.participationType"
+            >
+              <option value="OPERATOR">Operator</option>
+              <option value="SWL">SWL</option>
+            </select></label
+          >
+          <label v-if="accountCreateForm.participationType === 'OPERATOR'"
+            >Initial callsign (optional)<input
+              v-model="accountCreateForm.callsign"
+              autocomplete="off"
+              maxlength="24"
+          /></label>
+          <fieldset
+            v-if="canGrantAdditionalRoles && creatableRoles.length"
+            class="wide"
+            :disabled="saving"
+          >
+            <legend>Additional roles you may grant</legend>
+            <p class="field-help">
+              The participant role is always assigned. Identity checks every
+              additional grant again when the account is created.
+            </p>
+            <div class="checkbox-grid">
+              <label
+                v-for="role in creatableRoles"
+                :key="role.code"
+                class="check-field"
+              >
+                <input
+                  v-model="accountCreateForm.roles"
+                  type="checkbox"
+                  :value="role.code"
+                />
+                <span
+                  >{{ role.name
+                  }}<small class="field-help"
+                    >{{ role.code }} ·
+                    {{ role.scopes.join(", ") || "No permissions" }}</small
+                  ></span
+                >
+              </label>
+            </div>
+          </fieldset>
+          <p
+            v-if="canGrantAdditionalRoles && !creatableRoles.length"
+            class="field-help wide"
+          >
+            No additional roles are within your current grant authority.
+          </p>
+          <p v-if="!canGrantAdditionalRoles" class="field-help wide">
+            Only the participant role will be assigned. Administrator role
+            grants require separate Identity permission.
+          </p>
+          <div class="form-actions wide">
+            <button class="primary" type="submit" :disabled="saving">
+              {{ saving ? "Creating…" : "Create account" }}
+            </button>
+          </div>
+        </fieldset>
+      </form>
+      <form
+        v-if="canManageUsers"
+        class="toolbar"
+        role="search"
+        @submit.prevent="load"
+      >
         <label class="toolbar-field"
           >Search users<input
             v-model="search"
             placeholder="Name or email" /></label
         ><button class="secondary" :disabled="loading || saving">Search</button>
       </form>
-      <div class="table-list">
+      <div v-if="canManageUsers" class="table-list">
         <button
           v-for="account in accounts"
           :key="account.id"
@@ -302,11 +493,20 @@ onMounted(load);
           No users match this search.
         </p>
       </div>
+      <p v-else-if="!creatingAccount" class="empty muted">
+        You can create accounts, but viewing existing accounts requires the
+        separate account-management permission.
+      </p>
     </article>
     <article class="panel">
       <h2>{{ selectedAccount ? "Edit user" : "User details" }}</h2>
       <p v-if="!selectedAccount" class="empty muted">
-        Choose a user to edit their details and roles.
+        <template v-if="canManageUsers">
+          Choose a user to edit their details and roles.
+        </template>
+        <template v-else>
+          Existing account details are not available with your current access.
+        </template>
       </p>
       <form
         v-else

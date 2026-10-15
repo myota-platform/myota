@@ -1092,7 +1092,13 @@ class IdentityHandler(JsonHandler):
     @staticmethod
     def list_admin_roles(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
         IdentityHandler._admin_authorize_any(
-            p, ("identity.admin", "identity.roles.manage")
+            p,
+            (
+                "identity.admin",
+                "identity.accounts.create",
+                "identity.roles.assign",
+                "identity.roles.manage",
+            ),
         )
         definitions = sorted(
             IdentityHandler._role_definitions().values(),

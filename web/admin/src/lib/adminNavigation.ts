@@ -116,7 +116,11 @@ export const adminPages: AdminPage[] = [
     icon: "◎",
     description:
       "Manage users and scope-bound role assignments, custom permissions and security events.",
-    allowed: scope("identity.admin", "identity.roles.manage"),
+    allowed: scope(
+      "identity.admin",
+      "identity.accounts.create",
+      "identity.roles.manage",
+    ),
   },
   {
     path: "/activity",

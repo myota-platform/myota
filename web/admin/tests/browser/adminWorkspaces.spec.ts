@@ -7,6 +7,7 @@ async function fixtures(
   failure = "",
   staleAuthorization = false,
   targetIdentityAdmin = false,
+  accountCreateStatus = 201,
 ) {
   const requests: string[] = [];
   const writes: Array<{ path: string; body: any }> = [];
@@ -145,7 +146,20 @@ async function fixtures(
         items: roles,
         permissions: [{ code: "activity.read", label: "Read activity" }],
       };
-    else if (path === "/v1/identity/accounts/user-1") {
+    else if (path === "/v1/identity/accounts" && request.method() === "POST") {
+      if (accountCreateStatus !== 201)
+        return route.fulfill({
+          status: accountCreateStatus,
+          json: { detail: "email already exists" },
+        });
+      body = {
+        id: "created-user",
+        ...request.postDataJSON(),
+        status: "PENDING_SETUP",
+        roles: [{ role: "PARTICIPANT" }],
+      };
+      return route.fulfill({ status: 201, json: body });
+    } else if (path === "/v1/identity/accounts/user-1") {
       const payload = request.postDataJSON();
       Object.assign(user, {
         ...payload,
@@ -395,6 +409,128 @@ test("roles-only access loads no account/security lists and opens the roles tab"
       (path) => path.endsWith("/accounts") || path.endsWith("/security-events"),
     ),
   ).toBe(false);
+});
+
+test("account creators can submit participants without a password", async ({
+  page,
+}) => {
+  const state = await fixtures(page, ["identity.accounts.create"]);
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const form = page.locator("form.account-create-form");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  expect(
+    await form
+      .locator('input[type="email"]')
+      .evaluate((input) => (input as HTMLInputElement).validity.valueMissing),
+  ).toBe(true);
+  expect(state.writes).toEqual([]);
+
+  await form.getByLabel("Display name").fill("New participant");
+  await form.getByLabel("Email").fill("new-participant@example.test");
+  await form.getByLabel("Participant type").selectOption("SWL");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("PENDING_SETUP");
+  await expect(page.getByRole("status")).toContainText(
+    "No invitation was sent",
+  );
+  expect(state.writes).toHaveLength(1);
+  expect(state.writes[0]).toMatchObject({
+    path: "/v1/identity/accounts",
+    body: {
+      displayName: "New participant",
+      email: "new-participant@example.test",
+      participationType: "SWL",
+    },
+  });
+  expect(state.writes[0].body).not.toHaveProperty("password");
+  expect(state.writes[0].body).not.toHaveProperty("roles");
+  expect(state.requests).toContain("/v1/identity/admin/roles");
+  expect(
+    state.requests.some(
+      (path) =>
+        path === "/v1/identity/admin/accounts" ||
+        path.startsWith("/v1/identity/admin/security-events"),
+    ),
+  ).toBe(false);
+  expect(state.errors).toEqual([]);
+});
+
+test("only grantable additional roles are offered during account creation", async ({
+  page,
+}) => {
+  const state = await fixtures(page, ["*"]);
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const form = page.locator("form.account-create-form");
+  const adminGrant = form.getByRole("checkbox", {
+    name: /Identity administrator/,
+  });
+  await expect(adminGrant).toBeVisible();
+  await adminGrant.check();
+  await form.getByLabel("Display name").fill("Delegated administrator");
+  await form.getByLabel("Email").fill("delegated@example.test");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  expect(state.writes[0].body.roles).toEqual([{ role: "IDENTITY_ADMIN" }]);
+  expect(state.writes[0].body).not.toHaveProperty("password");
+
+  const restricted = await fixtures(page, [
+    "identity.accounts.create",
+    "identity.roles.assign",
+  ]);
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const restrictedForm = page.locator("form.account-create-form");
+  await expect(
+    restrictedForm.getByRole("checkbox", { name: /Identity administrator/ }),
+  ).toHaveCount(0);
+  await expect(restrictedForm).toContainText(
+    "No additional roles are within your current grant authority.",
+  );
+  expect(restricted.writes).toEqual([]);
+});
+
+test("duplicate email and authorization outcomes are safe and actionable", async ({
+  page,
+}) => {
+  const state = await fixtures(
+    page,
+    ["identity.accounts.create"],
+    "",
+    false,
+    false,
+    400,
+  );
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const form = page.locator("form.account-create-form");
+  await form.getByLabel("Display name").fill("Duplicate participant");
+  await form.getByLabel("Email").fill("existing@example.test");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "An account with this email already exists",
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Search for the existing account instead",
+  );
+  expect(state.writes).toHaveLength(1);
+  expect(state.errors).toEqual([]);
 });
 
 test("published policies/content are read-only and programme scope appears once", async ({
