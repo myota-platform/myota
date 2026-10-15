@@ -57,9 +57,8 @@ services:
       ACTIVITY_DATABASE: myota_activity
       GEO_DATABASE: myota_geo
     volumes:
-      - ./db/migrations:/migrations/migrations:ro
-      - ./db/bootstrap:/migrations/bootstrap:ro
-      - ./db/migrations/run.sh:/migrations/run.sh:ro
+      - ./db/migrations:/migrations:ro
+      - ./db/bootstrap:/bootstrap:ro
     depends_on:
       core-db: {condition: service_healthy}
       activity-db: {condition: service_healthy}
@@ -419,26 +418,31 @@ services:
     profiles: [observability]
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
-    command: >-
-      mc alias set seaweed http://seaweedfs:8333 "$AWS_ACCESS_KEY_ID"
-      "$AWS_SECRET_ACCESS_KEY" &&
-      mc mb --ignore-existing seaweed/myota-loki
+    command:
+      - >-
+        if aws s3api head-bucket --bucket myota-loki
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+        >/dev/null 2>&1; then exit 0; fi;
+        aws s3api create-bucket --bucket myota-loki --acl private
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
     environment:
-      AWS_ACCESS_KEY_ID: myota-s3
-      AWS_SECRET_ACCESS_KEY: myota-s3-dev-only
+      AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
       AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: ${MYOTA_OBJECT_STORAGE_ENDPOINT:-http://seaweedfs:8333}
     depends_on:
       seaweedfs: {condition: service_healthy}
   profile-image-bucket-init:
     image: public.ecr.aws/aws-cli/aws-cli:2.27.41
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
-    command: >-
-      if aws s3api head-bucket --bucket myota-user-profile-images
-      --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION"
-      >/dev/null 2>&1; then exit 0; fi;
-      aws s3api create-bucket --bucket myota-user-profile-images --acl private
-      --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION"
+    command:
+      - >-
+        if aws s3api head-bucket --bucket myota-user-profile-images
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
+        >/dev/null 2>&1; then exit 0; fi;
+        aws s3api create-bucket --bucket myota-user-profile-images --acl private
+        --endpoint-url "$$AWS_ENDPOINT_URL" --region "$$AWS_DEFAULT_REGION"
     environment:
       AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
       AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
@@ -451,7 +455,7 @@ services:
     restart: "no"
     network_mode: none
     entrypoint: ["python3", "/scripts/render_seaweedfs_s3_config.py"]
-    command: ["--output", "/config/s3.json"]
+    command: ["--output", "/config/s3.json", "--owner-uid", "1000", "--owner-gid", "1000"]
     environment:
       MYOTA_OBJECT_STORAGE_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
       MYOTA_OBJECT_STORAGE_SECRET_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
@@ -467,8 +471,8 @@ services:
     restart: unless-stopped
     command: ["-config.file=/etc/loki/config.yaml", "-config.expand-env=true"]
     environment:
-      AWS_ACCESS_KEY_ID: myota-s3
-      AWS_SECRET_ACCESS_KEY: myota-s3-dev-only
+      AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
     volumes:
       - ./observability/loki.yaml:/etc/loki/config.yaml:ro
       - loki-data:/var/loki
@@ -480,34 +484,35 @@ services:
     profiles: [observability]
     restart: "no"
     entrypoint: ["/bin/sh", "-ec"]
-    command: |
-      psql --no-password -h core-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-      \getenv monitor_password MYOTA_PG_CORE_MONITOR_PASSWORD
-      SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
-      \gexec
-      ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
-      GRANT CONNECT ON DATABASE myota_core TO myota_observability;
-      GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
-      SQL
-      psql --no-password -h activity-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-      \getenv monitor_password MYOTA_PG_ACTIVITY_MONITOR_PASSWORD
-      SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
-      \gexec
-      ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
-      GRANT CONNECT ON DATABASE myota_activity TO myota_observability;
-      GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
-      SQL
-      psql --no-password -h geo-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-      \getenv monitor_password MYOTA_PG_GEO_MONITOR_PASSWORD
-      SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
-      \gexec
-      ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
-      GRANT CONNECT ON DATABASE myota_geo TO myota_observability;
-      GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
-      SQL
+    command:
+      - |
+        psql --no-password -h core-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv monitor_password MYOTA_PG_CORE_MONITOR_PASSWORD
+        SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
+        \gexec
+        ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
+        GRANT CONNECT ON DATABASE myota_core TO myota_observability;
+        GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
+        SQL
+        psql --no-password -h activity-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv monitor_password MYOTA_PG_ACTIVITY_MONITOR_PASSWORD
+        SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
+        \gexec
+        ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
+        GRANT CONNECT ON DATABASE myota_activity TO myota_observability;
+        GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
+        SQL
+        psql --no-password -h geo-db -U myota -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+        \getenv monitor_password MYOTA_PG_GEO_MONITOR_PASSWORD
+        SELECT format('CREATE ROLE myota_observability LOGIN PASSWORD %L', :'monitor_password')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'myota_observability')
+        \gexec
+        ALTER ROLE myota_observability LOGIN PASSWORD :'monitor_password';
+        GRANT CONNECT ON DATABASE myota_geo TO myota_observability;
+        GRANT SELECT ON pg_catalog.pg_stat_database TO myota_observability;
+        SQL
     environment:
       PGPASSWORD: myota-dev-only
       MYOTA_PG_CORE_MONITOR_PASSWORD: ${MYOTA_PG_CORE_MONITOR_PASSWORD:-myota-dev-monitor-core}
@@ -558,7 +563,17 @@ services:
       GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./observability/grafana/dashboards/myota-api-performance.json:/etc/grafana/dashboards/myota-api-performance.json:ro
+      - ./observability/grafana/dashboards/myota-application-workflows.json:/etc/grafana/dashboards/myota-application-workflows.json:ro
+      - ./observability/grafana/dashboards/myota-geodata-capacity.json:/etc/grafana/dashboards/myota-geodata-capacity.json:ro
+      - ./observability/grafana/dashboards/myota-logs-failures.json:/etc/grafana/dashboards/myota-logs-failures.json:ro
+      - ./observability/grafana/dashboards/myota-object-storage.json:/etc/grafana/dashboards/myota-object-storage.json:ro
+      - ./observability/grafana/dashboards/myota-outbox-relay.json:/etc/grafana/dashboards/myota-outbox-relay.json:ro
+      - ./observability/grafana/dashboards/myota-postgresql-postgis.json:/etc/grafana/dashboards/myota-postgresql-postgis.json:ro
+      - ./observability/grafana/dashboards/myota-service-health.json:/etc/grafana/dashboards/myota-service-health.json:ro
+      - ./observability/grafana/dashboards/myota-traces.json:/etc/grafana/dashboards/myota-traces.json:ro
+      - ./observability/grafana/dashboards/nats:/etc/grafana/dashboards-nats:ro
+      - ./observability/grafana/dashboards/k3s:/etc/grafana/dashboards-k3s:ro
       - grafana-data:/var/lib/grafana
     depends_on: [prometheus, alertmanager, tempo, loki]
 volumes:

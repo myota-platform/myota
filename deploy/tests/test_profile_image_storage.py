@@ -74,6 +74,38 @@ class ProfileImageStorageTests(unittest.TestCase):
             self.assertEqual(stdout.getvalue(), "")
             self.assertNotIn("profile-access-test", stdout.getvalue())
 
+    def test_private_config_can_be_owned_by_the_pinned_seaweed_runtime_user(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "s3.json"
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "render_seaweedfs_s3_config.py",
+                        "--output",
+                        str(output),
+                        "--owner-uid",
+                        "1000",
+                        "--owner-gid",
+                        "1000",
+                    ],
+                ),
+                patch.object(render_config.os, "fchown") as chown,
+            ):
+                self.assertEqual(render_config.main(), 0)
+            self.assertEqual(chown.call_args.args[1:], (1000, 1000))
+            self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+        compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+        self.assertEqual(
+            compose["services"]["profile-image-s3-config-init"]["command"][
+                -4:
+            ],
+            ["--owner-uid", "1000", "--owner-gid", "1000"],
+        )
+
     def test_profile_identity_cannot_reuse_storage_admin_credentials(self):
         with patch.dict(
             os.environ,

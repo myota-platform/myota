@@ -66,6 +66,112 @@ class ObservabilityConfigurationTests(unittest.TestCase):
                 query["query"], '{$${__tags}} | trace_id="$${__span.traceId}"'
             )
 
+    def test_compose_loki_bucket_init_uses_the_shipped_cli_and_runtime_credentials(
+        self,
+    ):
+        import yaml
+
+        services = yaml.safe_load((ROOT / "compose.yaml").read_text())[
+            "services"
+        ]
+        init = services["loki-bucket-init"]
+        self.assertIn("aws-cli", init["image"])
+        self.assertEqual(len(init["command"]), 1)
+        script = init["command"][0]
+        self.assertIn("aws s3api head-bucket", script)
+        self.assertIn("aws s3api create-bucket", script)
+        self.assertNotIn("mc ", script)
+        self.assertIn("--acl private", script)
+        self.assertIn("$$AWS_ENDPOINT_URL", script)
+        self.assertIn("$$AWS_DEFAULT_REGION", script)
+        self.assertEqual(
+            init["environment"]["AWS_ACCESS_KEY_ID"],
+            services["loki"]["environment"]["AWS_ACCESS_KEY_ID"],
+        )
+        self.assertEqual(
+            init["environment"]["AWS_SECRET_ACCESS_KEY"],
+            services["loki"]["environment"]["AWS_SECRET_ACCESS_KEY"],
+        )
+        self.assertIn(
+            "${MYOTA_OBJECT_STORAGE_SECRET_KEY",
+            init["environment"]["AWS_SECRET_ACCESS_KEY"],
+        )
+        self.assertEqual(
+            services["loki"]["depends_on"]["loki-bucket-init"]["condition"],
+            "service_completed_successfully",
+        )
+
+    def test_compose_bootstrap_scripts_are_single_shell_arguments_and_sql_is_reachable(
+        self,
+    ):
+        import yaml
+
+        services = yaml.safe_load((ROOT / "compose.yaml").read_text())[
+            "services"
+        ]
+        for name in (
+            "loki-bucket-init",
+            "profile-image-bucket-init",
+            "postgres-monitor-role-init",
+        ):
+            self.assertEqual(services[name]["entrypoint"], ["/bin/sh", "-ec"])
+            self.assertIsInstance(services[name]["command"], list)
+            self.assertEqual(len(services[name]["command"]), 1)
+        migrations = services["migrations"]
+        self.assertIn("./db/migrations:/migrations:ro", migrations["volumes"])
+        self.assertIn("./db/bootstrap:/bootstrap:ro", migrations["volumes"])
+        self.assertNotIn(
+            "./db/bootstrap:/migrations/bootstrap:ro", migrations["volumes"]
+        )
+        self.assertTrue(
+            (ROOT / "db/migrations/core/001_core_baseline.sql").is_file()
+        )
+        self.assertTrue((ROOT / "db/migrations/run.sh").is_file())
+
+    def test_compose_dashboard_providers_have_disjoint_file_roots(self):
+        import yaml
+
+        services = yaml.safe_load((ROOT / "compose.yaml").read_text())[
+            "services"
+        ]
+        mounts = services["grafana"]["volumes"]
+        self.assertNotIn(
+            "./observability/grafana/dashboards:/etc/grafana/dashboards:ro",
+            mounts,
+        )
+        for path in (ROOT / "observability/grafana/dashboards").glob("*.json"):
+            self.assertIn(
+                f"./observability/grafana/dashboards/{path.name}:/etc/grafana/dashboards/{path.name}:ro",
+                mounts,
+            )
+        self.assertIn(
+            "./observability/grafana/dashboards/nats:/etc/grafana/dashboards-nats:ro",
+            mounts,
+        )
+        self.assertIn(
+            "./observability/grafana/dashboards/k3s:/etc/grafana/dashboards-k3s:ro",
+            mounts,
+        )
+        self.assertEqual(
+            yaml.safe_load(
+                (
+                    ROOT
+                    / "observability/grafana/provisioning/dashboards/dashboards.yml"
+                ).read_text()
+            ),
+            yaml.safe_load(
+                (
+                    ROOT
+                    / "helm/myota/observability/grafana/provisioning/dashboards/dashboards.yml"
+                ).read_text()
+            ),
+        )
+
+    def test_compose_application_account_has_jetstream_enabled(self):
+        config = (ROOT / "observability/nats-compose.conf").read_text()
+        self.assertIn("APP: {jetstream: enabled, users:", config)
+        self.assertIn("no_auth_user: myota-app", config)
+
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
             ROOT / "helm/myota/templates/observability.yaml"
