@@ -30,7 +30,8 @@ END;
 $$;
 
 UPDATE public.account
-   SET identity_email_key = lower(btrim(email::text))
+   SET email = lower(btrim(email::text)),
+       identity_email_key = lower(btrim(email::text))
  WHERE email IS NOT NULL;
 
 UPDATE public.account
@@ -93,6 +94,33 @@ CREATE TABLE IF NOT EXISTS public.identity_login_rate_limit (
 
 CREATE INDEX IF NOT EXISTS identity_login_rate_limit_expiry_idx
   ON public.identity_login_rate_limit (expires_at);
+
+CREATE TABLE IF NOT EXISTS public.identity_oidc_provider_mapping (
+  id uuid PRIMARY KEY,
+  programme_slug text NOT NULL,
+  issuer text NOT NULL,
+  client_id text NOT NULL,
+  scopes text[] NOT NULL DEFAULT '{}',
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT identity_oidc_programme_slug_nonempty
+    CHECK (length(btrim(programme_slug)) > 0),
+  CONSTRAINT identity_oidc_issuer_nonempty
+    CHECK (length(btrim(issuer)) > 0),
+  CONSTRAINT identity_oidc_client_id_nonempty
+    CHECK (length(btrim(client_id)) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS public.identity_auth_state_migration (
+  migration_name text PRIMARY KEY,
+  source_sha256 text NOT NULL,
+  source_counts jsonb NOT NULL,
+  target_counts jsonb NOT NULL,
+  completed_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT identity_auth_migration_checksum_check
+    CHECK (source_sha256 ~ '^[0-9a-f]{64}$')
+);
 
 CREATE INDEX IF NOT EXISTS account_recovery_token_expiry_idx
   ON public.account_recovery_token (expires_at);
