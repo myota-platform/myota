@@ -56,15 +56,17 @@ Account administration also exposes the Phase 1 resource aliases: `PATCH
 /v1/identity/accounts/{accountId}/primary-callsign`. The older action routes
 remain compatibility aliases. See the [Phase 1 API resource update record](https://github.com/myota-platform/myota-docs/blob/main/docs/api-phase1-resource-updates.md).
 
-The unit-test adapter can run in memory. Durable runtime uses PostgreSQL, but
-Identity currently hydrates `account`, authentication, role, session, and
-security-event state into process memory from the `service_state` JSONB
-snapshot. The relational authentication tables are not yet the runtime source
-of truth, and this snapshot model is not qualified for concurrent Identity
-replicas. The PostgreSQL-authority migration is tracked in the Identity
-workstream. See the current [shared account and role policy record](https://github.com/myota-platform/myota-docs/blob/main/docs/architecture/decisions/0009-identity-accounts-and-role-policy.md).
-Production secrets remain deployment-managed; do not use the test adapter as
-a production data store.
+The unit-test adapter can run in memory. Durable runtime loads Identity-owned
+accounts, credentials, role definitions and assignments, sessions, revocations,
+recovery tokens, login limits, callsign evidence, security events, and OIDC
+mappings from their PostgreSQL tables inside each request transaction. Writes
+are serialized with a transaction-scoped advisory lock across replicas; reads
+use a repeatable-read snapshot. Startup and requests fail closed unless the
+restartable `service-state-jsonb-v1` backfill marker exists. The legacy
+`service_state` row is retained for migration recovery and is not read or
+written by Identity runtime code. Apply Core migrations `002` and `003` before
+rolling out this runtime. Production secrets remain deployment-managed; do not
+use the test adapter as a production data store.
 
 ## Test and run locally
 

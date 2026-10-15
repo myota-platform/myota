@@ -19,7 +19,6 @@ from urllib.parse import urlsplit, urlunsplit
 from common import (
     BinaryResponse,
     JsonHandler,
-    Store,
     hash_secret,
     new_id,
     now,
@@ -30,6 +29,7 @@ from common import (
     verify_token,
 )
 from profile_images import normalize_profile_image, profile_image_store
+from relational_store import IdentityStore
 
 
 ACCESS_SECONDS = int(os.environ.get("MYOTA_ACCESS_TOKEN_SECONDS", "600"))
@@ -40,6 +40,19 @@ LOGIN_WINDOW_SECONDS = int(os.environ.get("MYOTA_LOGIN_WINDOW_SECONDS", "900"))
 SECURITY_EVENT_RETENTION_SECONDS = int(
     os.environ.get("MYOTA_SECURITY_EVENT_RETENTION_SECONDS", "31536000")
 )
+
+
+class PersistedAuthenticationValueError(ValueError):
+    """An auth rejection whose lockout/audit changes must commit."""
+
+    commit_operation = True
+
+
+class PersistedAuthenticationPermissionError(PermissionError):
+    """A throttle rejection whose updated counter must commit."""
+
+    commit_operation = True
+
 
 ADMIN_PERMISSION_CATALOG = [
     {
@@ -220,7 +233,7 @@ def iso_after(seconds: int) -> str:
 
 class IdentityHandler(JsonHandler):
     service = "identity-service"
-    store = Store("identity", "CORE_DATABASE_URL")
+    store = IdentityStore()
 
     @staticmethod
     def metrics_text() -> str:
@@ -455,14 +468,16 @@ class IdentityHandler(JsonHandler):
     @staticmethod
     def _rate_limit(key: str) -> None:
         limits = IdentityHandler._bucket("rateLimits")
+        key = hashlib.sha256(key.encode()).hexdigest()
         current = time.time()
         record = limits.get(key, {"windowStart": current, "count": 0})
         if current - record["windowStart"] >= LOGIN_WINDOW_SECONDS:
             record = {"windowStart": current, "count": 0}
         record["count"] += 1
+        record["expiresAt"] = record["windowStart"] + LOGIN_WINDOW_SECONDS
         limits[key] = record
         if record["count"] > MAX_LOGIN_ATTEMPTS:
-            raise PermissionError(
+            raise PersistedAuthenticationPermissionError(
                 "too many authentication attempts; try again later"
             )
 
@@ -515,6 +530,19 @@ class IdentityHandler(JsonHandler):
             and image.get("id")
         }
         return profile_image_store.delete_orphans(references)
+
+    @staticmethod
+    def _delete_profile_image_after_commit(
+        account_id: str, image_id: str
+    ) -> None:
+        def delete() -> None:
+            try:
+                profile_image_store.delete(account_id, image_id)
+            except Exception:
+                # The orphan sweep retries failed object deletion.
+                pass
+
+        IdentityHandler.store.after_commit(delete)
 
     @staticmethod
     def _mint_tokens(
@@ -705,7 +733,7 @@ class IdentityHandler(JsonHandler):
                 {"email": body["email"], "remoteAddr": p.get("Remote-Addr")},
                 account["id"] if account else None,
             )
-            raise ValueError("invalid credentials")
+            raise PersistedAuthenticationValueError("invalid credentials")
         credential.update({"failedAttempts": 0, "lockedUntil": None})
         IdentityHandler._audit(
             "identity.login.succeeded.v1",
@@ -995,11 +1023,9 @@ class IdentityHandler(JsonHandler):
                 pass
             raise RuntimeError("profile image could not be saved")
         if previous and previous.get("id"):
-            try:
-                profile_image_store.delete(account_id, previous["id"])
-            except Exception:
-                # The orphan sweep retries failed object deletion after its grace period.
-                pass
+            IdentityHandler._delete_profile_image_after_commit(
+                account_id, previous["id"]
+            )
         return {"profileImage": account["profileImage"]}
 
     @staticmethod
@@ -1022,11 +1048,9 @@ class IdentityHandler(JsonHandler):
                 account["updatedAt"] = before_updated_at
             raise RuntimeError("profile image could not be removed")
         if previous and previous.get("id"):
-            try:
-                profile_image_store.delete(account["id"], previous["id"])
-            except Exception:
-                # The orphan sweep retries failed object deletion after its grace period.
-                pass
+            IdentityHandler._delete_profile_image_after_commit(
+                account["id"], previous["id"]
+            )
         return {"profileImage": None, "_status": 200}
 
     @staticmethod
@@ -1224,13 +1248,9 @@ class IdentityHandler(JsonHandler):
             and previous_profile_image.get("id")
             and not account.get("profileImage")
         ):
-            try:
-                profile_image_store.delete(
-                    account["id"], previous_profile_image["id"]
-                )
-            except Exception:
-                # The orphan sweep retries failed object deletion after its grace period.
-                pass
+            IdentityHandler._delete_profile_image_after_commit(
+                account["id"], previous_profile_image["id"]
+            )
         return {
             **IdentityHandler._profile_account(account),
             "roles": IdentityHandler._roles(account["id"]),
@@ -1779,13 +1799,9 @@ class IdentityHandler(JsonHandler):
             and previous_profile_image
             and previous_profile_image.get("id")
         ):
-            try:
-                profile_image_store.delete(
-                    account["id"], previous_profile_image["id"]
-                )
-            except Exception:
-                # The orphan sweep retries failed object deletion after its grace period.
-                pass
+            IdentityHandler._delete_profile_image_after_commit(
+                account["id"], previous_profile_image["id"]
+            )
         return IdentityHandler._profile_account(account)
 
 
@@ -2005,14 +2021,14 @@ def seed() -> None:
 
 if __name__ == "__main__":
     configure_logging("myota-identity", component="api")
-    seed()
-    bootstrap_admin()
+    with IdentityHandler.store.operation(write=True):
+        seed()
+        bootstrap_admin()
     server = ThreadingHTTPServer(("0.0.0.0", 8001), IdentityHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        IdentityHandler.store.persist()
         IdentityHandler.store.close()
         server.server_close()

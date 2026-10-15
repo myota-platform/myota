@@ -54,10 +54,11 @@ and preserve required safety and quality gates.
   flow. Never deploy a Testing image to production.
 - Verify deployment behavior in the Helm-backed `myota-test` release. Do not
   use Docker Compose or Podman for deployment tests or qualification.
-- Promote validated changes through the `testing` branch. Normal implementation
-  pull requests target `testing`; do not open a pull request to `main`, including
-  a release pull request, unless the user explicitly instructs you to do so.
-  Production uses release digests and required checks.
+- Promote validated changes by merging them into the `testing` branch, and stop
+  there. Open implementation pull requests against `testing`. Do not open a pull
+  request to `main` or promote changes from `testing` to `main` unless the user
+  specifically instructs you to do so. Production uses release digests and
+  required checks.
 - Preserve branch history. Reconcile divergent branches through pull requests;
   do not reset or force-push them. Do not migrate former repository branches.
 - Put documentation-only changes in `myota-docs` and governance changes in

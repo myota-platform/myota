@@ -12,7 +12,6 @@ from myota_logging import configure_logging, log_event
 
 interval = int(os.environ.get("MYOTA_IDENTITY_MAINTENANCE_SECONDS", "3600"))
 configure_logging("myota-identity", "identity-maintenance")
-IdentityHandler.store.hydrate()
 try:
     while True:
         log_event(
@@ -22,9 +21,13 @@ try:
             component="identity-maintenance",
             job_type="identity-retention",
         )
-        removed = IdentityHandler.cleanup_expired()
+        with IdentityHandler.store.operation(write=True):
+            removed = IdentityHandler.cleanup_expired()
         try:
-            removed_profile_images = IdentityHandler.cleanup_profile_images()
+            with IdentityHandler.store.operation(write=False):
+                removed_profile_images = (
+                    IdentityHandler.cleanup_profile_images()
+                )
         except Exception as exc:
             log_event(
                 logging.getLogger(__name__),
@@ -35,7 +38,6 @@ try:
                 error_type=type(exc).__name__,
             )
             removed_profile_images = 0
-        IdentityHandler.store.persist()
         log_event(
             logging.getLogger(__name__),
             logging.INFO,
@@ -49,5 +51,4 @@ try:
 except KeyboardInterrupt:
     pass
 finally:
-    IdentityHandler.store.persist()
     IdentityHandler.store.close()
