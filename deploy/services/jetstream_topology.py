@@ -121,6 +121,9 @@ GEODATA_WORK = (
         4,
     ),
 )
+EMAIL_WORK = (
+    ("email-delivery-v1", "myota.work.email.send.v1", 90, 8, 1, 1),
+)
 
 
 def _positive_int(env_name: str) -> int:
@@ -140,6 +143,32 @@ def desired_topology(
     scope: str = "all",
 ) -> tuple[tuple[Stream, ...], tuple[Consumer, ...]]:
     """Build finite target limits from explicitly supplied capacity evidence."""
+    if scope == "email-work":
+        email_stream = Stream(
+            "MYOTA_EMAIL_WORK",
+            ("myota.work.email.send.v1",),
+            "workqueue",
+            _positive_int("NATS_EMAIL_WORK_MAX_AGE_SECONDS"),
+            _positive_int("NATS_EMAIL_WORK_MAX_BYTES"),
+            _positive_int("NATS_EMAIL_WORK_MAX_MESSAGES"),
+            _positive_int("NATS_EMAIL_WORK_MAX_MESSAGE_BYTES"),
+        )
+        email_consumers = tuple(
+            Consumer(
+                "MYOTA_EMAIL_WORK",
+                durable,
+                subject,
+                ack_wait,
+                max_deliver,
+                max_pending,
+                max_waiting,
+            )
+            for durable, subject, ack_wait, max_deliver, max_pending, max_waiting in EMAIL_WORK
+        )
+        streams, consumers = (email_stream,), email_consumers
+        validate_topology(streams, consumers, scope)
+        return streams, consumers
+
     if scope == "geodata-work":
         geodata_stream = Stream(
             "MYOTA_GEODATA_WORK",
@@ -272,6 +301,8 @@ def validate_topology(
         if scope == "activity-work"
         else {"MYOTA_GEODATA_WORK"}
         if scope == "geodata-work"
+        else {"MYOTA_EMAIL_WORK"}
+        if scope == "email-work"
         else {"MYOTA_EVENTS", "MYOTA_ACTIVITY_WORK", "MYOTA_GEODATA_WORK"}
     )
     if set(names) != required:
@@ -286,10 +317,9 @@ def validate_topology(
         if consumer.stream not in {
             "MYOTA_ACTIVITY_WORK",
             "MYOTA_GEODATA_WORK",
+            "MYOTA_EMAIL_WORK",
         }:
-            raise ValueError(
-                "Phase 1 only provisions registered work durables"
-            )
+            raise ValueError("only registered work durables can be provisioned")
         filter_key = (consumer.stream, consumer.filter_subject)
         if filter_key in work_filters:
             raise ValueError(f"overlapping work durable filter {filter_key}")

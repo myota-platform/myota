@@ -25,6 +25,7 @@ TEST_IMAGES = {
     key: image.rsplit(":", 1)[0] + ":testing" for key, image in IMAGES.items()
 }
 TEST_IMAGES["web"] = "ghcr.io/myota-platform/myota-web:testing"
+TEST_IMAGES["email"] = "ghcr.io/myota-platform/myota-email-service:testing"
 
 
 def main() -> None:

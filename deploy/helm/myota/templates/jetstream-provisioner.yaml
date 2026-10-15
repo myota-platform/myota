@@ -63,6 +63,14 @@ spec:
   "NATS_GEODATA_WORK_MAX_MESSAGE_BYTES" $capacity.geodataWorkMaxMessageBytes
 }}
 {{- end }}
+{{- if eq .Values.jetstreamProvisioner.scope "email-work" }}
+{{- $capacityEnv = dict
+  "NATS_EMAIL_WORK_MAX_AGE_SECONDS" $capacity.emailWorkMaxAgeSeconds
+  "NATS_EMAIL_WORK_MAX_BYTES" $capacity.emailWorkMaxBytes
+  "NATS_EMAIL_WORK_MAX_MESSAGES" $capacity.emailWorkMaxMessages
+  "NATS_EMAIL_WORK_MAX_MESSAGE_BYTES" $capacity.emailWorkMaxMessageBytes
+}}
+{{- end }}
 {{- range $name, $value := $capacityEnv }}
             - name: {{ $name }}
               value: {{ required (printf "jetstreamProvisioner.capacity value for %s is required" $name) $value | quote }}

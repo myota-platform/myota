@@ -1,0 +1,21 @@
+{{- if .Values.services.email.enabled }}
+{{- $email := .Values.services.email }}
+{{- if or (empty $email.senderAddress) (empty $email.smtpHost) (empty $email.smtpUsername) }}
+{{- fail "services.email.enabled requires senderAddress, smtpHost, and smtpUsername" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myota-email-config
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: email
+data:
+  EMAIL_SENDER_ADDRESS: {{ $email.senderAddress | quote }}
+  EMAIL_SENDER_DISPLAY_NAME: {{ $email.senderDisplayName | quote }}
+  EMAIL_SMTP_HOST: {{ $email.smtpHost | quote }}
+  EMAIL_SMTP_PORT: {{ $email.smtpPort | quote }}
+  EMAIL_SMTP_USERNAME: {{ $email.smtpUsername | quote }}
+  EMAIL_SMTP_TLS_MODE: {{ $email.smtpTlsMode | quote }}
+  EMAIL_SMTP_TIMEOUT_SECONDS: {{ $email.smtpTimeoutSeconds | quote }}
+{{- end }}
