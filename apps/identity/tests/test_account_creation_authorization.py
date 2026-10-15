@@ -292,6 +292,64 @@ class IdentityAccountCreationAuthorizationTests(unittest.TestCase):
         )
         self.assertIn("*", root["scopes"])
 
+    def test_account_creator_can_read_role_choices_without_account_admin_access(
+        self,
+    ):
+        creator = {
+            "id": "account-creator",
+            "displayName": "Account Creator",
+            "email": "account-creator@example.test",
+            "participationType": "OPERATOR",
+            "status": "ACTIVE",
+            "callsigns": [],
+            "primaryCallsignId": None,
+        }
+        IdentityHandler.store.items[creator["id"]] = creator
+        assignment = {
+            "id": "account-creator-role",
+            "accountId": creator["id"],
+            "role": "ACCOUNT_CREATOR",
+            "programmeSlug": None,
+            "jurisdiction": None,
+            "entityType": None,
+            "scopes": ["identity.accounts.create"],
+            "createdAt": "2026-01-01T00:00:00Z",
+            "validTo": None,
+        }
+        IdentityHandler._bucket("roles")[assignment["id"]] = assignment
+
+        result = IdentityHandler.list_admin_roles(
+            None,
+            {
+                "Authorization": "Bearer " + self.token(creator),
+                "_http": "1",
+            },
+        )
+
+        self.assertTrue(result["items"])
+        self.assertIn(
+            "identity.accounts.create",
+            {permission["code"] for permission in result["permissions"]},
+        )
+        participant = {
+            "id": "role-list-denied",
+            "displayName": "Ordinary Participant",
+            "email": "role-list-denied@example.test",
+            "participationType": "SWL",
+            "status": "ACTIVE",
+            "callsigns": [],
+            "primaryCallsignId": None,
+        }
+        IdentityHandler.store.items[participant["id"]] = participant
+        with self.assertRaises(PermissionError):
+            IdentityHandler.list_admin_roles(
+                None,
+                {
+                    "Authorization": "Bearer " + self.token(participant),
+                    "_http": "1",
+                },
+            )
+
     def test_access_token_for_deactivated_account_is_rejected(self):
         token = self.token(self.root)
         self.root["status"] = "DEACTIVATED"

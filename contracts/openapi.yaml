@@ -168,7 +168,13 @@ paths:
       tags: [Identity]
       security: [{ bearerAuth: [] }]
       summary: List built-in and custom administrative roles and permissions
-      responses: { '200': { description: Role catalogue } }
+      description: >-
+        Requires identity.admin, identity.accounts.create,
+        identity.roles.assign, or identity.roles.manage. Account creators use
+        this non-personal role catalogue to show only roles they may grant.
+      responses:
+        '200': { description: Role catalogue }
+        '403': { description: Missing role-catalogue access }
     post:
       tags: [Identity]
       security: [{ bearerAuth: [] }]
@@ -205,10 +211,15 @@ paths:
       security: [{ bearerAuth: [] }]
       description: >-
         Requires identity.accounts.create. Every new account receives the
-        participant role and remains pending credential setup. Supplying any
-        additional role requires identity.roles.assign and each granted role
-        must be strictly below the actor's current authority. Permanent
-        passwords and client-supplied permission scopes are not accepted.
+        participant role and remains pending credential setup. This operation
+        does not send an invitation; invitation delivery and credential setup
+        are not available yet. Clients must show the pending setup state and
+        must not claim that an invitation was sent. Supplying any additional
+        role requires identity.roles.assign and each granted role must be
+        strictly below the actor's current authority. Permanent passwords and
+        client-supplied permission scopes are not accepted. Repeating a request
+        with the same Idempotency-Key replays the original result; a duplicate
+        email without a prior idempotent result is rejected.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -220,6 +231,8 @@ paths:
         '201':
           description: Created
           content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }
+        '400': { description: Invalid account data or duplicate email address }
+        '401': { description: Missing or invalid authentication }
         '403': { description: Missing account-create or role-grant authority }
   /v1/identity/accounts/{accountId}/callsigns:
     post:
