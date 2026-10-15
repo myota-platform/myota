@@ -52,8 +52,12 @@ and preserve required safety and quality gates.
   `testing-<commit-sha>` tags for changed artifacts. Deploy the unique digest
   to the isolated `myota-test` release through the configured digest-sync
   flow. Never deploy a Testing image to production.
-- Promote validated work to `main` through a release pull request from
-  `testing`, with required checks enforced. Production uses release digests.
+- Verify deployment behavior in the Helm-backed `myota-test` release. Do not
+  use Docker Compose or Podman for deployment tests or qualification.
+- Promote validated implementation through `testing`. Do not open a pull
+  request to `main` unless the user explicitly instructs it. If asked to make
+  a production release, use a release pull request from `testing` with required
+  checks enforced; production uses release digests.
 - Preserve branch history. Reconcile divergent branches through pull requests;
   do not reset or force-push them. Do not migrate former repository branches.
 - Put documentation-only changes in `myota-docs` and governance changes in
