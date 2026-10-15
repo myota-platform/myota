@@ -108,6 +108,10 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.profileImageExistingSecret }}, key: {{ $.Values.objectStorage.profileImageSecretKeyKey }}}}
             - name: MYOTA_PROFILE_IMAGE_BUCKET
               value: {{ $.Values.objectStorage.profileImageBucket | quote }}
+            {{- if $.Values.services.email.enabled }}
+            - name: MYOTA_EMAIL_SERVICE_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: {{ $.Values.services.email.identitySecret }}, key: {{ $.Values.services.email.identityClientSecretKey }}}}
+            {{- end }}
             {{- end }}
             {{- if eq $name "email" }}
             - name: IDENTITY_INTERNAL_URL

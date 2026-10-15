@@ -19,6 +19,11 @@ class EmailDeploymentTests(unittest.TestCase):
         config = (ROOT / "helm/myota/templates/email-config.yaml").read_text()
         self.assertIn("key: {{ $cfg.smtpPasswordKey }}", deployment)
         self.assertIn("key: {{ $cfg.identityClientSecretKey }}", deployment)
+        self.assertIn("$.Values.services.email.identitySecret", deployment)
+        self.assertIn(
+            "$.Values.services.email.identityClientSecretKey", deployment
+        )
+        self.assertIn("MYOTA_EMAIL_SERVICE_CLIENT_SECRET", deployment)
         self.assertNotIn("EMAIL_SMTP_PASSWORD", config)
         self.assertNotIn("MYOTA_EMAIL_SERVICE_CLIENT_SECRET", config)
         for safe_key in (
