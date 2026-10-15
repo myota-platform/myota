@@ -29,11 +29,13 @@ Geodata preprocessing still carries internal `_records` and `_status` in
 its source-derived event shape. Introduce and review a minimal versioned
 projection before enforcement. The Operations Service is retired; it owned no domain-fact producer or payload schema.
 
-The proposed `email.send.v1` work command uses an Identity account reference
-and a versioned allowlisted account-created template. It excludes email
-addresses, message bodies, credentials, recovery tokens, and arbitrary HTML.
-Its contract does not authorize runtime publication; the owner transaction,
-recipient-resolution API, service consumer, and deployment remain separate
+The `email.send.v1` work command uses an Identity account reference and a
+versioned allowlisted account-created template. The email consumer validates
+against the canonical checked-in schema and excludes email addresses, message
+bodies, credentials, recovery tokens, and arbitrary HTML. Identity owns the
+durable producer outbox; Deploy bounds the JetStream recovery window, after
+which operators republish the same stable `workId` from that outbox. The
+transactional Identity producer and Helm Testing qualification remain separate
 gates tracked by the email workstream.
 
 Geodata entity categories use the shared master-data catalogue. `entityTypes`

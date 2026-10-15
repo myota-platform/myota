@@ -15,18 +15,38 @@ import smtplib
 import ssl
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from email.message import EmailMessage
 from html import escape
 from pathlib import Path
 from typing import Protocol
 
-MAX_COMMAND_BYTES = 8 * 1024
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+from referencing import Registry, Resource
+
+_CONTRACT_ROOT = Path(__file__).resolve().parent / "contracts" / "schemas"
+if not _CONTRACT_ROOT.exists():
+    _CONTRACT_ROOT = Path(__file__).resolve().parents[2] / "contracts" / "schemas"
+_WORK_SCHEMA = json.loads(
+    (_CONTRACT_ROOT / "work-command.schema.json").read_text(encoding="utf-8")
+)
+_EMAIL_SCHEMA = json.loads(
+    (_CONTRACT_ROOT / "work" / "email-send-v1.schema.json").read_text(encoding="utf-8")
+)
+_EMAIL_SCHEMA_REGISTRY = Registry().with_resource(
+    _WORK_SCHEMA["$id"], Resource.from_contents(_WORK_SCHEMA)
+)
+_EMAIL_VALIDATOR = Draft202012Validator(
+    _EMAIL_SCHEMA,
+    registry=_EMAIL_SCHEMA_REGISTRY,
+    format_checker=FormatChecker(),
+)
+MAX_COMMAND_BYTES = _EMAIL_SCHEMA["x-max-payload-bytes"]
 EMAIL_WORK_TYPE = "email.send.v1"
-SUPPORTED_TEMPLATES = {
-    "account-created-participant.v1",
-    "account-created-administrator.v1",
-}
+SUPPORTED_TEMPLATES = set(
+    _EMAIL_SCHEMA["allOf"][1]["properties"]["payload"]["properties"]["templateId"][
+        "enum"
+    ]
+)
 
 
 def secret_from_env(name: str, values: dict[str, str] | None = None) -> str:
@@ -69,78 +89,25 @@ class EmailCommand:
     @classmethod
     def parse(cls, raw: bytes) -> EmailCommand:
         if len(raw) > MAX_COMMAND_BYTES:
-            raise InvalidCommand("command exceeds the 8192-byte contract limit")
+            raise InvalidCommand("command exceeds the contract payload limit")
         try:
             envelope = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise InvalidCommand("command is not valid JSON") from exc
-        if not isinstance(envelope, dict):
-            raise InvalidCommand("command envelope must be an object")
-        allowed = {
-            "envelopeVersion",
-            "workId",
-            "workType",
-            "createdAt",
-            "producer",
-            "aggregate",
-            "correlationId",
-            "causationId",
-            "payload",
-        }
-        required = {
-            "envelopeVersion",
-            "workId",
-            "workType",
-            "createdAt",
-            "producer",
-            "payload",
-        }
-        if set(envelope) - allowed or required - set(envelope):
-            raise InvalidCommand("command envelope fields do not match contract")
-        if envelope["envelopeVersion"] != 1 or envelope["workType"] != EMAIL_WORK_TYPE:
-            raise InvalidCommand("unsupported work contract version")
+        try:
+            _EMAIL_VALIDATOR.validate(envelope)
+        except ValidationError as exc:
+            raise InvalidCommand(
+                "command does not match the email work contract"
+            ) from exc
         work_id = _uuid(envelope["workId"], "workId")
         payload = envelope["payload"]
-        if not isinstance(payload, dict) or set(payload) != {
-            "recipientAccountId",
-            "templateId",
-            "templateData",
-        }:
-            raise InvalidCommand("email payload fields do not match contract")
         recipient_id = _uuid(payload["recipientAccountId"], "recipientAccountId")
         template_id = payload["templateId"]
-        if template_id not in SUPPORTED_TEMPLATES:
-            raise InvalidCommand("unsupported email template")
         data = payload["templateData"]
-        if not isinstance(data, dict):
-            raise InvalidCommand("templateData must be an object")
-        if template_id == "account-created-participant.v1":
-            _exact_text_fields(data, {"displayName": (1, 120)})
-        else:
-            _exact_text_fields(
-                data,
-                {
-                    "createdAccountName": (1, 120),
-                    "createdAccountRole": (1, 20),
-                },
-            )
-            if data["createdAccountRole"] not in {"PARTICIPANT", "ADMINISTRATOR"}:
-                raise InvalidCommand("unsupported created-account role")
         created_at = envelope["createdAt"]
-        if not isinstance(created_at, str) or not created_at.endswith("Z"):
-            raise InvalidCommand("createdAt must be a UTC timestamp")
-        try:
-            datetime.fromisoformat(created_at)
-        except ValueError as exc:
-            raise InvalidCommand("createdAt must be an RFC3339 timestamp") from exc
         producer = envelope["producer"]
-        if not isinstance(producer, str) or not producer.strip() or len(producer) > 80:
-            raise InvalidCommand("producer must be a bounded non-empty string")
         correlation_id = envelope.get("correlationId")
-        if correlation_id is not None and (
-            not isinstance(correlation_id, str) or len(correlation_id) > 200
-        ):
-            raise InvalidCommand("correlationId exceeds the contract limit")
         return cls(
             work_id=work_id,
             created_at=created_at,
@@ -159,15 +126,6 @@ def _uuid(value: object, field: str) -> str:
         return str(uuid.UUID(value))
     except ValueError as exc:
         raise InvalidCommand(f"{field} must be a UUID") from exc
-
-
-def _exact_text_fields(data: dict, fields: dict[str, tuple[int, int]]) -> None:
-    if set(data) != set(fields):
-        raise InvalidCommand("template fields do not match the allowlist")
-    for name, (minimum, maximum) in fields.items():
-        value = data[name]
-        if not isinstance(value, str) or not minimum <= len(value) <= maximum:
-            raise InvalidCommand("template field is outside its size limit")
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,9 @@ validates the bounded envelope and one of the allowlisted templates, resolves
 the current recipient through Identity's service-token-protected API, renders
 escaped text and HTML, and submits through SMTP with verified STARTTLS or
 implicit TLS. It has no inbound send API and no access to Identity storage.
+The worker loads the canonical JSON Schema from `contracts/schemas/work` at
+startup; the image includes that schema and its shared envelope schema. Contract
+changes trigger the consumer validation workflow.
 
 The accepted ownership, privacy, retry/recovery, and operator guidance is in
 the canonical [email delivery architecture and operations record](https://github.com/myota-platform/myota-docs/blob/main/docs/operations/messaging/email-delivery.md)

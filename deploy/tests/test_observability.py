@@ -137,6 +137,13 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertIn("otlp/tempo", config)
         self.assertIn("endpoint: 0.0.0.0:8889", config)
 
+    def test_helm_collector_scrapes_activity_notifications_service(self):
+        config = (
+            ROOT / "helm/myota/observability/otel-collector.yaml"
+        ).read_text()
+        self.assertIn("myota-activity-notifications:9110", config)
+        self.assertNotIn("myota-myota-activity-notifications:9110", config)
+
     def test_dashboard_is_real_data_only(self):
         dashboard = json.loads(
             (

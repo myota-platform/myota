@@ -98,15 +98,20 @@ account-created template IDs. The participant template accepts only a bounded
 display name; the administrator template accepts a bounded created-account
 name and role. Each template ID is immutable: an incompatible variable change
 requires a new versioned ID, and retired IDs remain rejected rather than being
-silently reinterpreted. The serialized envelope limit is 8 KiB. Delivery uses
-explicit acknowledgement after durable outcome; transient failures retry
-under deployment-bounded policy, while unknown versions/templates must never
-be success-acked. SMTP delivery is at least once because acceptance can be
-ambiguous after a worker failure. Addresses are resolved by the email worker
-through a least-privilege Identity API. Recovery and verification tokens,
-passwords, credentials, raw addresses, arbitrary HTML, and message bodies are
-excluded. These are proposed contract definitions pending the Identity outbox
-and email consumer work; they do not authorize runtime publication.
+silently reinterpreted. The serialized envelope limit is 8 KiB. The email
+consumer validates against this checked-in JSON Schema, acknowledges only after
+a durable outcome, and terminates unknown versions/templates without a success
+ACK. Transient failures retry under deployment-bounded policy. SMTP delivery is
+at least once because acceptance can be ambiguous after a worker failure.
+Addresses are resolved by the email worker through a least-privilege Identity
+API. Recovery and verification tokens, passwords, credentials, raw addresses,
+arbitrary HTML, and message bodies are excluded. Identity owns the durable
+producer outbox and is the recovery source of truth; JetStream retention is
+bounded by Deploy's configured age, message, byte, and payload limits. After
+work expires from JetStream, operators recover it by republishing the same
+stable `workId` from the Identity outbox. The Identity producer and its
+transactional outbox remain pending; this contract and consumer do not authorize
+runtime publication by themselves.
 
 ```json
 {
