@@ -45,6 +45,13 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             inventory(ROOT / "helm/myota/observability/grafana/dashboards"),
         )
 
+    def test_outbox_dashboard_is_mounted_by_helm(self):
+        template = (ROOT / "helm/myota/templates/observability.yaml").read_text()
+        self.assertIn("myota-outbox-relay.json: |", template)
+        self.assertIn(
+            "/etc/grafana/dashboards/myota-outbox-relay.json", template
+        )
+
     def test_trace_to_log_query_filters_structured_metadata(self):
         import yaml
 
