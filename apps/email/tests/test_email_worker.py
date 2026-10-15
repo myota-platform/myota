@@ -433,6 +433,38 @@ class EmailWorkerTests(unittest.TestCase):
         with self.assertRaises(InvalidCommand):
             EmailCommand.parse(b" " * (8 * 1024 + 1))
 
+    def test_unknown_contract_version_is_dead_lettered_without_success_ack(self):
+        payload = command()
+        payload["workType"] = "email.send.v2"
+        events = []
+
+        class Store:
+            def dead_letter(self, work_id, code):
+                events.append(("dead_letter", work_id, code))
+
+        class Message:
+            data = json.dumps(payload).encode()
+
+            async def ack(self):
+                events.append(("ack",))
+
+            async def term(self):
+                events.append(("term",))
+
+        config = WorkerConfig(
+            "postgresql://unused",
+            "http://identity",
+            "x" * 32,
+            Sender("noreply@example.test", "MyOTA"),
+            SMTPConfig("smtp.example.test", 587, "user", "secret", "starttls", 5),
+        )
+        asyncio.run(handle_message(Message(), Store(), SimpleNamespace(), config))
+
+        self.assertEqual(
+            events,
+            [("dead_letter", None, "invalid_command"), ("term",)],
+        )
+
     def test_render_escapes_user_content_in_html(self):
         parsed = EmailCommand.parse(json.dumps(command()).encode())
         message = render_message(
