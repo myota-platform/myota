@@ -255,7 +255,7 @@ BEGIN
   INSERT INTO public.identity_login_rate_limit (
     key_hash, window_started_at, request_count, expires_at
   )
-  SELECT encode(digest(entry.key, 'sha256'), 'hex'),
+  SELECT encode(public.digest(entry.key, 'sha256'), 'hex'),
          to_timestamp((entry.value->>'windowStart')::double precision),
          coalesce((entry.value->>'count')::integer, 0),
          to_timestamp((entry.value->>'windowStart')::double precision) + interval '15 minutes'
