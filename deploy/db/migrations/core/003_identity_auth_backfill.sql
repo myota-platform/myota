@@ -157,7 +157,7 @@ BEGIN
     id, account_id, value, lifecycle_status, verification_source,
     verified_at, valid_from, valid_to
   )
-  SELECT (item.value->>'id')::uuid,
+  SELECT (call.value->>'id')::uuid,
          (account.value->>'id')::uuid,
          call.value->>'value',
          coalesce(call.value->>'status', 'UNVERIFIED'),
@@ -167,7 +167,6 @@ BEGIN
          nullif(call.value->>'validTo', '')::timestamptz
     FROM jsonb_each(coalesce(nullif(legacy->'items', 'null'::jsonb), '{}'::jsonb)) AS account(key, value)
     CROSS JOIN LATERAL jsonb_array_elements(coalesce(account.value->'callsigns', '[]'::jsonb)) AS call(value)
-    CROSS JOIN LATERAL (SELECT account.value) AS item(value)
   ON CONFLICT (id) DO UPDATE SET
     account_id = EXCLUDED.account_id,
     value = EXCLUDED.value,
