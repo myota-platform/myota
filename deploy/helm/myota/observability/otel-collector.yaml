@@ -98,7 +98,7 @@ receivers:
         - job_name: myota-services
           scrape_interval: 15s
           static_configs:
-            - targets: [myota-gateway:8080, myota-geodata:8003, myota-activity:8004, myota-myota-activity-notifications:9110]
+            - targets: [myota-gateway:8080, myota-geodata:8003, myota-activity:8004, myota-activity-notifications:9110]
         - job_name: myota-identity
           scrape_interval: 15s
           static_configs:
