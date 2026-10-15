@@ -5,6 +5,8 @@ on:
     branches: [main, testing, 'feature/**', 'fix/**']
     paths:
       - "apps/email/**"
+      - "contracts/schemas/work-command.schema.json"
+      - "contracts/schemas/work/email-send-v1.schema.json"
       - "deploy/**"
       - ".github/workflows/email.yml"
   pull_request:
@@ -37,8 +39,8 @@ jobs:
       - name: Run email service tests
         run: python -m unittest discover -s tests -v
       - name: Build service image without publishing
-        run: docker build -f Dockerfile -t myota-email-service:ci .
-        working-directory: apps/email
+        run: docker build -f apps/email/Dockerfile -t myota-email-service:ci .
+        working-directory: .
 
   publish-testing-image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/testing'
@@ -58,7 +60,7 @@ jobs:
       - name: Publish immutable Testing image tags
         uses: docker/build-push-action@v6
         with:
-          context: ./apps/email
+          context: .
           file: ./apps/email/Dockerfile
           push: true
           tags: |
