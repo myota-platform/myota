@@ -7,6 +7,10 @@ the current recipient through Identity's service-token-protected API, renders
 escaped text and HTML, and submits through SMTP with verified STARTTLS or
 implicit TLS. It has no inbound send API and no access to Identity storage.
 
+The accepted ownership, privacy, retry/recovery, and operator guidance is in
+the canonical [email delivery architecture and operations record](https://github.com/myota-platform/myota-docs/blob/main/docs/operations/messaging/email-delivery.md)
+and [ADR-0010](https://github.com/myota-platform/myota-docs/blob/main/docs/architecture/decisions/0010-asynchronous-email-delivery.md).
+
 ## Runtime behavior
 
 `email_worker.py` uses the service-owned PostgreSQL delivery ledger to claim
