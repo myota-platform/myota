@@ -7,6 +7,7 @@ import threading
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 import psycopg
 from psycopg import sql
@@ -367,6 +368,102 @@ class IdentityRelationalStoreTests(unittest.TestCase):
                 self.assertEqual(credential["failedAttempts"], 5)
                 self.assertIsNotNone(credential["lockedUntil"])
                 self.assertTrue(rotated["refreshToken"])
+        finally:
+            IdentityHandler.store = previous_store
+
+    def test_recovery_reset_is_one_time_and_revokes_sessions_across_instances(
+        self,
+    ):
+        first, second = self.new_store(), self.new_store()
+        previous_store = IdentityHandler.store
+        account_id = str(uuid.uuid4())
+        password = "Relational Identity Password 2026!"
+        account = self.account(account_id, "recovery@example.test")
+        try:
+            IdentityHandler.store = first
+            with first.operation(write=True):
+                first.items[account_id] = account
+                IdentityHandler._set_password(account_id, password)
+                logged_in = IdentityHandler.login(
+                    None,
+                    {
+                        "_body": {
+                            "email": "recovery@example.test",
+                            "password": password,
+                        },
+                        "Remote-Addr": "192.0.2.20",
+                    },
+                )
+
+            with patch.dict(os.environ, {"MYOTA_ENV": "test"}):
+                with first.operation(write=True):
+                    request = IdentityHandler.recovery_request(
+                        None, {"_body": {"email": "recovery@example.test"}}
+                    )
+                self.assertEqual(request["status"], "accepted")
+                token = request["devResetToken"]
+
+                IdentityHandler.store = second
+                with second.operation(write=True):
+                    reset = IdentityHandler.recovery_reset(
+                        None,
+                        {
+                            "_body": {
+                                "token": token,
+                                "newPassword": "Updated Relational Password 2026!",
+                            }
+                        },
+                    )
+                self.assertEqual(reset["status"], "password_reset")
+
+                IdentityHandler.store = first
+                with first.operation(write=False):
+                    self.assertTrue(
+                        next(iter(first.data["recovery"].values()))["usedAt"]
+                    )
+                    session = next(iter(first.data["sessions"].values()))
+                    self.assertIsNotNone(session["revokedAt"])
+
+                with first.operation(write=True):
+                    with self.assertRaisesRegex(
+                        ValueError, "recovery token is invalid or expired"
+                    ):
+                        IdentityHandler.recovery_reset(
+                            None,
+                            {
+                                "_body": {
+                                    "token": token,
+                                    "newPassword": "Another Relational Password 2026!",
+                                }
+                            },
+                        )
+
+                with first.operation(write=True):
+                    with self.assertRaisesRegex(
+                        PermissionError, "invalid or revoked"
+                    ):
+                        IdentityHandler.refresh(
+                            None,
+                            {
+                                "_body": {
+                                    "refreshToken": logged_in["refreshToken"]
+                                }
+                            },
+                        )
+
+                IdentityHandler.store = second
+                with second.operation(write=True):
+                    relogin = IdentityHandler.login(
+                        None,
+                        {
+                            "_body": {
+                                "email": "recovery@example.test",
+                                "password": "Updated Relational Password 2026!",
+                            },
+                            "Remote-Addr": "192.0.2.20",
+                        },
+                    )
+                self.assertTrue(relogin["refreshToken"])
         finally:
             IdentityHandler.store = previous_store
 
