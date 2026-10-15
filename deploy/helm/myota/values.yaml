@@ -10,6 +10,7 @@ imageRollout:
     programmes: ""
     geodata: ""
     activity: ""
+    email: ""
     gateway: ""
     adminWeb: ""
     web: ""
@@ -90,6 +91,37 @@ services:
     replicas: 3
     dbPoolMax: 12
     httpMaxWorkers: 64
+  email:
+    # Enable only after the myota-email-runtime database/Identity SMTP secrets
+    # and a non-production SMTP target have been provisioned in the namespace.
+    enabled: false
+    imageRepository: ghcr.io/myota-platform/myota-email-service
+    imageTag: ""
+    port: 9108
+    replicas: 1
+    databaseSecret: myota-email-runtime
+    databaseUrlKey: email-database-url
+    smtpSecret: myota-email-runtime
+    smtpPasswordKey: smtp-password
+    identitySecret: myota-email-runtime
+    identityClientSecretKey: identity-client-secret
+    postgresExistingSecret: myota-email-postgres-auth
+    storageSize: 2Gi
+    identityInternalUrl: http://myota-identity:8001
+    senderAddress: ""
+    senderDisplayName: MyOTA
+    smtpHost: ""
+    smtpPort: 587
+    smtpUsername: ""
+    smtpTlsMode: starttls
+    smtpTimeoutSeconds: 10
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 activityWorkers:
   enabled: true
   replicas: 2
@@ -253,6 +285,10 @@ jetstreamProvisioner:
     activityWorkMaxMessageBytes: ""
     geodataWorkMaxAgeSeconds: ""
     geodataWorkMaxBytes: ""
+    emailWorkMaxAgeSeconds: ""
+    emailWorkMaxBytes: ""
+    emailWorkMaxMessages: ""
+    emailWorkMaxMessageBytes: ""
     geodataWorkMaxMessages: ""
     geodataWorkMaxMessageBytes: ""
 outbox:

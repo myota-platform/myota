@@ -52,6 +52,47 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             "/etc/grafana/dashboards/myota-outbox-relay.json", template
         )
 
+    def test_email_dashboard_is_provisioned_and_uses_bounded_metrics(self):
+        dashboard = json.loads(
+            (
+                ROOT
+                / "observability/grafana/dashboards/myota-email-delivery.json"
+            ).read_text()
+        )
+        expressions = [
+            target.get("expr", "")
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+        ]
+        self.assertTrue(
+            any("myota_email_queue_pending_messages" in expr for expr in expressions)
+        )
+        self.assertTrue(
+            any("myota_email_queue_oldest_message_age_seconds" in expr for expr in expressions)
+        )
+        self.assertTrue(
+            any("myota_email_smtp_delivery_duration_seconds" in expr for expr in expressions)
+        )
+        self.assertFalse(
+            any("account_id" in expr or "email_address" in expr for expr in expressions)
+        )
+        template = (ROOT / "helm/myota/templates/observability.yaml").read_text()
+        self.assertIn("myota-email-delivery.json: |", template)
+        self.assertIn("/etc/grafana/dashboards/myota-email-delivery.json", template)
+
+    def test_email_operational_alerts_use_bounded_metrics(self):
+        rules = (ROOT / "observability/rules.yml").read_text()
+        for name in (
+            "MyOTAEmailQueueOldestCommandAge",
+            "MyOTAEmailQueueNearCapacity",
+            "MyOTAEmailDeadLettersIncreasing",
+            "MyOTAEmailSMTPUnavailable",
+            "MyOTAEmailSMTPLatencyHigh",
+        ):
+            self.assertIn(name, rules)
+        self.assertNotIn("email_address", rules)
+        self.assertNotIn("account_id", rules)
+
     def test_trace_to_log_query_filters_structured_metadata(self):
         import yaml
 

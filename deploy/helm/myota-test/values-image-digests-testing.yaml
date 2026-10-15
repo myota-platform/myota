@@ -9,4 +9,5 @@ myota:
       gateway: "sha256:79c08d5d56b57a9653bcf9fb7d34b6513d081cf613870b51d4b53fccf291f35e"
       adminWeb: "sha256:3442d53b13c1aa98b053e7e88c18139e0ce4eec787a0c9a47d3f59f1aeb9cff7"
       platform: "sha256:d365da1672cbae354752ddc516a1113ed98e143161b2b3923a1f12c784c96e4b"
+      email: ""
       web: "sha256:5a404d56b721532c09b60670de410653fa551cebb20d9b0afe72c8fad6542249"

@@ -56,6 +56,8 @@ data:
 {{ .Files.Get "observability/grafana/dashboards/myota-application-workflows.json" | indent 4 }}
   myota-outbox-relay.json: |
 {{ .Files.Get "observability/grafana/dashboards/myota-outbox-relay.json" | indent 4 }}
+  myota-email-delivery.json: |
+{{ .Files.Get "observability/grafana/dashboards/myota-email-delivery.json" | indent 4 }}
   myota-traces.json: |
 {{ .Files.Get "observability/grafana/dashboards/myota-traces.json" | indent 4 }}
   alert-rules.yml: |
@@ -468,6 +470,7 @@ spec:
             - {name: config, mountPath: /etc/grafana/dashboards-k3s/myota-k3s-workload.json, subPath: myota-k3s-workload.json}
             - {name: config, mountPath: /etc/grafana/dashboards/myota-application-workflows.json, subPath: myota-application-workflows.json}
             - {name: config, mountPath: /etc/grafana/dashboards/myota-outbox-relay.json, subPath: myota-outbox-relay.json}
+            - {name: config, mountPath: /etc/grafana/dashboards/myota-email-delivery.json, subPath: myota-email-delivery.json}
             - {name: config, mountPath: /etc/grafana/dashboards/myota-traces.json, subPath: myota-traces.json}
             - {name: nats-dashboards, mountPath: /etc/grafana/dashboards-nats}
             - {name: data, mountPath: /var/lib/grafana}

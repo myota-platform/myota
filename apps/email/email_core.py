@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
 from html import escape
+from pathlib import Path
 from typing import Protocol
 
 MAX_COMMAND_BYTES = 8 * 1024
@@ -28,12 +29,31 @@ SUPPORTED_TEMPLATES = {
 }
 
 
+def secret_from_env(name: str, values: dict[str, str] | None = None) -> str:
+    """Read a secret from either an environment value or a mounted file."""
+    env = values if values is not None else os.environ
+    inline = env.get(name, "")
+    path = env.get(f"{name}_FILE", "")
+    if inline and path:
+        raise ValueError(f"{name} and {name}_FILE cannot both be configured")
+    if path:
+        try:
+            return Path(path).read_text(encoding="utf-8").rstrip("\r\n")
+        except (OSError, UnicodeError):
+            raise ValueError(f"{name} secret file is unavailable") from None
+    return inline
+
+
 class InvalidCommand(ValueError):
     """A command is malformed or outside the checked-in email contract."""
 
 
 class RecipientUnavailable(RuntimeError):
     """The Identity-owned account cannot receive this email."""
+
+
+class SMTPDeliveryError(RuntimeError):
+    """A redacted, retryable failure talking to the configured SMTP server."""
 
 
 @dataclass(frozen=True)
@@ -246,7 +266,7 @@ class SMTPConfig:
             host=values.get("EMAIL_SMTP_HOST", "").strip(),
             port=port,
             username=values.get("EMAIL_SMTP_USERNAME", ""),
-            password=values.get("EMAIL_SMTP_PASSWORD", ""),
+            password=secret_from_env("EMAIL_SMTP_PASSWORD", values),
             tls_mode=values.get("EMAIL_SMTP_TLS_MODE", "starttls").lower(),
             timeout_seconds=timeout,
         )
@@ -281,4 +301,7 @@ def deliver_smtp(config: SMTPConfig, message: EmailMessage) -> None:
 
 
 async def deliver_smtp_async(config: SMTPConfig, message: EmailMessage) -> None:
-    await asyncio.to_thread(deliver_smtp, config, message)
+    try:
+        await asyncio.to_thread(deliver_smtp, config, message)
+    except (OSError, smtplib.SMTPException, ssl.SSLError, TimeoutError):
+        raise SMTPDeliveryError("SMTP delivery failed") from None
