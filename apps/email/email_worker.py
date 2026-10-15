@@ -20,6 +20,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+from psycopg import Error as PostgresError
+
 from email_core import (
     EmailCommand,
     InvalidCommand,
@@ -33,7 +35,6 @@ from email_core import (
     secret_from_env,
 )
 from email_observability import EmailTelemetry, HealthMetricsServer, JsonFormatter
-from psycopg import Error as PostgresError
 
 LOG = logging.getLogger("myota.email")
 MAX_DELIVERIES = 8
