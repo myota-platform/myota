@@ -458,11 +458,7 @@ class EmailWorkerTests(unittest.TestCase):
             Sender("noreply@example.test", "MyOTA"),
             SMTPConfig("smtp.example.test", 587, "user", "secret", "starttls", 5),
         )
-        asyncio.run(
-            handle_message(
-                Message(), Store(), SimpleNamespace(), config
-            )
-        )
+        asyncio.run(handle_message(Message(), Store(), SimpleNamespace(), config))
 
         self.assertEqual(
             events,

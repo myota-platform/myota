@@ -30,9 +30,7 @@ _WORK_SCHEMA = json.loads(
     (_CONTRACT_ROOT / "work-command.schema.json").read_text(encoding="utf-8")
 )
 _EMAIL_SCHEMA = json.loads(
-    (_CONTRACT_ROOT / "work" / "email-send-v1.schema.json").read_text(
-        encoding="utf-8"
-    )
+    (_CONTRACT_ROOT / "work" / "email-send-v1.schema.json").read_text(encoding="utf-8")
 )
 _EMAIL_SCHEMA_REGISTRY = Registry().with_resource(
     _WORK_SCHEMA["$id"], Resource.from_contents(_WORK_SCHEMA)
@@ -45,9 +43,9 @@ _EMAIL_VALIDATOR = Draft202012Validator(
 MAX_COMMAND_BYTES = _EMAIL_SCHEMA["x-max-payload-bytes"]
 EMAIL_WORK_TYPE = "email.send.v1"
 SUPPORTED_TEMPLATES = set(
-    _EMAIL_SCHEMA["allOf"][1]["properties"]["payload"]["properties"][
-        "templateId"
-    ]["enum"]
+    _EMAIL_SCHEMA["allOf"][1]["properties"]["payload"]["properties"]["templateId"][
+        "enum"
+    ]
 )
 
 
