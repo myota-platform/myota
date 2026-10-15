@@ -322,6 +322,12 @@ class Store:
                 connection.rollback()
                 raise
 
+    @contextmanager
+    def operation(self, write: bool = False) -> Iterator[None]:
+        """Bracket one handler operation; relational stores override this."""
+        del write
+        yield
+
     def hydrate(self) -> None:
         if self._hydrated or not self.durable:
             self._hydrated = True
@@ -666,9 +672,9 @@ class JsonHandler(BaseHTTPRequestHandler):
             return
         path = self.path.split("?", 1)[0]
         if method == "GET" and path == "/metrics":
-            self._send_metrics(
-                type(self).metrics_text() + _render_http_metrics()
-            )
+            with self.store.operation(write=False):
+                metrics = type(self).metrics_text() + _render_http_metrics()
+            self._send_metrics(metrics)
             return
         for (route_method, pattern), fn in self.routes.items():
             if route_method != method:
@@ -701,30 +707,31 @@ class JsonHandler(BaseHTTPRequestHandler):
                             else {}
                         )
                     with bind_correlation_id(self.correlation_id):
-                        result = fn(
-                            self,
-                            {
-                                **params,
-                                "_body": body,
-                                "_raw_body": raw_body,
-                                "Content-Type": self.headers.get(
-                                    "Content-Type", ""
-                                ),
-                                "_path": self.path,
-                                "Idempotency-Key": self.headers.get(
-                                    "Idempotency-Key"
-                                ),
-                                "Authorization": self.headers.get(
-                                    "Authorization", ""
-                                ),
-                                "User-Agent": self.headers.get(
-                                    "User-Agent", ""
-                                ),
-                                "Remote-Addr": self.client_address[0],
-                                "_http": "1",
-                            },
-                        )
-                    self.store.persist()
+                        with self.store.operation(write=method != "GET"):
+                            result = fn(
+                                self,
+                                {
+                                    **params,
+                                    "_body": body,
+                                    "_raw_body": raw_body,
+                                    "Content-Type": self.headers.get(
+                                        "Content-Type", ""
+                                    ),
+                                    "_path": self.path,
+                                    "Idempotency-Key": self.headers.get(
+                                        "Idempotency-Key"
+                                    ),
+                                    "Authorization": self.headers.get(
+                                        "Authorization", ""
+                                    ),
+                                    "User-Agent": self.headers.get(
+                                        "User-Agent", ""
+                                    ),
+                                    "Remote-Addr": self.client_address[0],
+                                    "_http": "1",
+                                },
+                            )
+                            self.store.persist()
                     if isinstance(result, BinaryResponse):
                         self._send_bytes(
                             result.status,
