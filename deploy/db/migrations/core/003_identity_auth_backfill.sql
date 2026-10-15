@@ -322,11 +322,11 @@ BEGIN
   ON CONFLICT (service, key) DO UPDATE SET response = EXCLUDED.response;
 
   source_counts := jsonb_build_object(
-    'accounts', jsonb_object_length(coalesce(nullif(legacy->'items', 'null'::jsonb), '{}'::jsonb)),
-    'credentials', jsonb_object_length(coalesce(nullif(legacy->'data'->'credentials', 'null'::jsonb), '{}'::jsonb)),
-    'roles', jsonb_object_length(coalesce(nullif(legacy->'data'->'roles', 'null'::jsonb), '{}'::jsonb)),
-    'sessions', jsonb_object_length(coalesce(nullif(legacy->'data'->'sessions', 'null'::jsonb), '{}'::jsonb)),
-    'recovery', jsonb_object_length(coalesce(nullif(legacy->'data'->'recovery', 'null'::jsonb), '{}'::jsonb)),
+    'accounts', (SELECT count(*) FROM jsonb_object_keys(coalesce(nullif(legacy->'items', 'null'::jsonb), '{}'::jsonb))),
+    'credentials', (SELECT count(*) FROM jsonb_object_keys(coalesce(nullif(legacy->'data'->'credentials', 'null'::jsonb), '{}'::jsonb))),
+    'roles', (SELECT count(*) FROM jsonb_object_keys(coalesce(nullif(legacy->'data'->'roles', 'null'::jsonb), '{}'::jsonb))),
+    'sessions', (SELECT count(*) FROM jsonb_object_keys(coalesce(nullif(legacy->'data'->'sessions', 'null'::jsonb), '{}'::jsonb))),
+    'recovery', (SELECT count(*) FROM jsonb_object_keys(coalesce(nullif(legacy->'data'->'recovery', 'null'::jsonb), '{}'::jsonb))),
     'events', jsonb_array_length(coalesce(nullif(legacy->'events', 'null'::jsonb), '[]'::jsonb))
   );
   target_counts := jsonb_build_object(
