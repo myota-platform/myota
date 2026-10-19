@@ -16,7 +16,7 @@ state. After migration the flag stays disabled; routine provisioning validates
 the three streams and ten work durables without retention migration.
 The registry-to-topology contract check verifies that all ten work subjects and
 durables match
-[the contracts registry](https://github.com/myota-platform/myota-contracts/blob/main/contracts/event-registry.json).
+[the contracts registry](../../contracts/event-registry.json).
 The topology tests verify explicit capacity requirements, the apply gate, and
 consumer drift rejection. Do not manually enable the migration flag or run an ad hoc broker update. The
 production cutover already removed the legacy Geodata subject capture and

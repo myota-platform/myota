@@ -150,7 +150,7 @@ shared Master data catalogue. The same multi-select is available when editing
 an existing entity, and category filters match entities containing any
 selected category.
 
-The service-side source manifests, refresh schedules, conflation decisions, disappearance policies, QGIS staging roles, and spatial APIs are documented in the platform repository’s [geodata production pipeline](https://github.com/myota-platform/myota-platform/blob/main/docs/geodata-production-pipeline.md).
+Geodata ownership, workflows, and qualification records are indexed in the [canonical Geodata documentation](https://github.com/myota-platform/myota-docs/tree/main/docs/geodata).
 
 ## Content and translations
 
