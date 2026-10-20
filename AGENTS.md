@@ -19,6 +19,14 @@ and preserve required safety and quality gates.
   durable transport, not business state or a long-term archive.
 - Put only stable shared primitives in `packages/`. Keep domain persistence,
   authorization, and upload policy with their owning services.
+- Every NestJS-based component must declare `@nestjs/observe` as a runtime
+  dependency in that component's `package.json` and lockfile, and initialize it
+  at the application root. Pass its instrumentation hook to each Nest
+  application, microservice, or application-context factory, including worker
+  processes. Give each independently deployed component a stable `serviceId`;
+  supply Observe credentials through environment variables or the deployment
+  secret store, never source control. Disable reporting in environments where
+  Observe is not configured.
 - Treat former repository copies as migration inputs or synchronized mirrors
   until parity is verified and builds use the monorepo paths. Do not delete
   mirrors based on assumptions.
@@ -36,6 +44,10 @@ and preserve required safety and quality gates.
 - Preserve data ownership, API behavior, security, compatibility, and failure
   handling. Do not introduce schema redesigns or language rewrites as side
   effects of repository changes.
+- NestJS components must use a Nest core version supported by
+  `@nestjs/observe` and follow its bootstrap integration requirements. Preserve
+  existing OpenTelemetry and log pipelines unless a reviewed architecture
+  change explicitly replaces or composes them.
 
 ## Branches, quality gates, and deployment
 
