@@ -1,6 +1,6 @@
 {
   "canonical": "contracts/openapi.yaml",
-  "canonicalSha256": "ef3baf2665ea5cdf11c354f7bf1dfe135feba04f1b98290c14dadddd6726d9e2",
+  "canonicalSha256": "3ff3f8278541e0c4c7d851aef50924a205bec59902f986fd409220f2d76e709e",
   "contractOperations": [
     {
       "method": "GET",
@@ -348,6 +348,11 @@
       "path": "/v1/identity/accounts/{accountId}/primary-callsign"
     },
     {
+      "method": "GET",
+      "operationId": "getAccountProfileImage",
+      "path": "/v1/identity/accounts/{accountId}/profile-image"
+    },
+    {
       "method": "PUT",
       "operationId": "replaceAccountRoleAssignments",
       "path": "/v1/identity/accounts/{accountId}/role-assignments"
@@ -402,7 +407,32 @@
     },
     {
       "method": "GET",
+      "operationId": "getEmailRecipientAddress",
+      "path": "/v1/identity/internal/email-recipients/{accountId}"
+    },
+    {
+      "method": "GET",
       "path": "/v1/identity/me"
+    },
+    {
+      "method": "PATCH",
+      "operationId": "patchIdentityProfile",
+      "path": "/v1/identity/me/profile"
+    },
+    {
+      "method": "DELETE",
+      "operationId": "deleteIdentityProfileImage",
+      "path": "/v1/identity/me/profile-image"
+    },
+    {
+      "method": "GET",
+      "operationId": "getIdentityProfileImage",
+      "path": "/v1/identity/me/profile-image"
+    },
+    {
+      "method": "PUT",
+      "operationId": "putIdentityProfileImage",
+      "path": "/v1/identity/me/profile-image"
     },
     {
       "method": "POST",
@@ -636,6 +666,618 @@
   ],
   "serviceRoutes": [
     {
+      "file": "identity.py",
+      "method": "DELETE",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}/export",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}/roles",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/admin/accounts",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/admin/roles",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/admin/security-events",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/internal/email-recipients/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/me",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PATCH",
+      "path": "/v1/identity/accounts/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PATCH",
+      "path": "/v1/identity/me/profile",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PATCH",
+      "path": "/v1/identity/roles/{roleCode}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/accounts",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/accounts/{accountId}/callsigns",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/accounts/{accountId}/callsigns/{callsignId}/evidence",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/accounts/{accountId}/callsigns/{callsignId}/retire",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/accounts/{accountId}/callsigns/{callsignId}/verify",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/admin/roles",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/login",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/logout",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/recovery/request",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/recovery/reset",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/refresh",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/register",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/auth/service-token",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/oidc/providers",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "POST",
+      "path": "/v1/identity/roles",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PUT",
+      "path": "/v1/identity/accounts/{accountId}/primary-callsign",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PUT",
+      "path": "/v1/identity/accounts/{accountId}/role-assignments",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PUT",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "programmes.py",
+      "method": "DELETE",
+      "path": "/v1/programmes/{slug}/entity-types/{categoryCode}",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/entity-types",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes/{slug}",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes/{slug}/content",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes/{slug}/content/coverage",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes/{slug}/entity-types",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes/{slug}/policy",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "GET",
+      "path": "/v1/programmes/{slug}/policy-drafts",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "PATCH",
+      "path": "/v1/programmes/{slug}",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "PATCH",
+      "path": "/v1/programmes/{slug}/content/{contentId}",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "PATCH",
+      "path": "/v1/programmes/{slug}/policy-drafts/{draftId}",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/entity-types",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/content",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/content/{contentId}/publish",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/content/{contentId}/review",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/content/{contentId}/submit",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/entity-types",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/policy-drafts",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/policy-drafts/{draftId}/publish",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/policy-drafts/{draftId}/review",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "POST",
+      "path": "/v1/programmes/{slug}/policy-drafts/{draftId}/submit",
+      "service": "programmes"
+    },
+    {
+      "file": "programmes.py",
+      "method": "PUT",
+      "path": "/v1/programmes/{slug}/entity-types/{categoryCode}",
+      "service": "programmes"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/activations",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/activations/entity-deletion-impacts/{entityId}",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/activations/{activationId}",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/adif/imports/{importId}",
+      "service": "activity"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/assets",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/assets/{assetId}/content",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/evaluation-jobs/{jobId}",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/issuances",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/issuances/{issuanceId}/artifact",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/issuances/{issuanceId}/render-jobs/{jobId}",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/progress",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/requests",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/{awardId}",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "GET",
+      "path": "/v1/awards/{awardId}/recalculation-jobs/{jobId}",
+      "service": "awards"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/notifications",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/public/activations",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/public/leaderboards",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/public/results",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/qso-ingestions/{ingestionId}",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/statistics",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "GET",
+      "path": "/v1/statistics/rebuild-jobs/{jobId}",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "PATCH",
+      "path": "/v1/activations/{activationId}",
+      "service": "activity"
+    },
+    {
+      "file": "awards.py",
+      "method": "PATCH",
+      "path": "/v1/awards/{awardId}",
+      "service": "awards"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/activations",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/activations/entity-deletion-cascades",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/activations/{activationId}/qsos",
+      "service": "activity"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/assets",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/evaluation-jobs",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/issuances/{issuanceId}/render-jobs",
+      "service": "awards"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/awards/previews",
+      "service": "activity"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/previews",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/requests",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/requests/{requestId}/issuances",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/{awardId}/publish",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/{awardId}/recalculation-jobs",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/{awardId}/retire",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/{awardId}/review",
+      "service": "awards"
+    },
+    {
+      "file": "awards.py",
+      "method": "POST",
+      "path": "/v1/awards/{awardId}/submit",
+      "service": "awards"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/qso-ingestions",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/qsos/{qsoId}/corrections",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/qsos/{qsoId}/corrections/{correctionId}/review",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "POST",
+      "path": "/v1/statistics/rebuild-jobs",
+      "service": "activity"
+    },
+    {
+      "file": "activity.py",
+      "method": "PUT",
+      "path": "/v1/awards/assets/{assetId}/content",
+      "service": "activity"
+    },
+    {
+      "file": "awards.py",
+      "method": "PUT",
+      "path": "/v1/awards/assets/{assetId}/content",
+      "service": "awards"
+    },
+    {
       "file": "geodata_routes.py",
       "method": "DELETE",
       "path": "/v1/geodata/import-uploads/{uploadId}",
@@ -646,6 +1288,228 @@
       "method": "DELETE",
       "path": "/v1/geodata/load-test-runs/{testRunId}",
       "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/adapters",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/conflation",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/entities",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/entities/{entityId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/entities/{entityId}/audit",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/entity-deletion-jobs/{jobId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/import-uploads/{uploadId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/imports",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/imports/{runId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/imports/{runId}/candidates",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/imports/{runId}/processing-queues/{queueId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/location-options",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/refresh-schedules",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "GET",
+      "path": "/v1/geodata/tiles/{z}/{x}/{y}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "PATCH",
+      "path": "/v1/geodata/entities/{entityId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/conflation/{candidateId}/resolve",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/entities/{entityId}/location-enrichment-requests",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/entities/{entityId}/reviews",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/entity-deletion-jobs",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/entity-deletion-jobs/{jobId}/confirm",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/import-uploads",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/import-uploads/{uploadId}/complete",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "common.py",
+      "method": "POST",
+      "path": "/v1/geodata/import-uploads/{uploadId}/parts/{partNumber}",
+      "service": "common"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/import-uploads/{uploadId}/parts/{partNumber}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/imports",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/imports/{runId}/candidates/validate",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/imports/{runId}/process",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/imports/{runId}/processed",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/proposals",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/refresh-schedules",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "POST",
+      "path": "/v1/geodata/refresh-schedules/{scheduleId}/run",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "PUT",
+      "path": "/v1/geodata/entities/{entityId}/categories",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "PUT",
+      "path": "/v1/geodata/entities/{entityId}/geometry",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "PUT",
+      "path": "/v1/geodata/imports/{runId}/cancellation",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "DELETE",
+      "path": "/v1/geodata/import-uploads/{uploadId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "geodata_routes.py",
+      "method": "DELETE",
+      "path": "/v1/geodata/load-test-runs/{testRunId}",
+      "service": "geodata_routes"
+    },
+    {
+      "file": "identity.py",
+      "method": "DELETE",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
     },
     {
       "file": "programmes.py",
@@ -848,6 +1712,12 @@
     {
       "file": "identity.py",
       "method": "GET",
+      "path": "/v1/identity/accounts/{accountId}/profile-image",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
       "path": "/v1/identity/accounts/{accountId}/roles",
       "service": "identity"
     },
@@ -872,7 +1742,19 @@
     {
       "file": "identity.py",
       "method": "GET",
+      "path": "/v1/identity/internal/email-recipients/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
       "path": "/v1/identity/me",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "GET",
+      "path": "/v1/identity/me/profile-image",
       "service": "identity"
     },
     {
@@ -981,6 +1863,12 @@
       "file": "identity.py",
       "method": "PATCH",
       "path": "/v1/identity/accounts/{accountId}",
+      "service": "identity"
+    },
+    {
+      "file": "identity.py",
+      "method": "PATCH",
+      "path": "/v1/identity/me/profile",
       "service": "identity"
     },
     {
@@ -1422,226 +2310,16 @@
       "service": "identity"
     },
     {
+      "file": "identity.py",
+      "method": "PUT",
+      "path": "/v1/identity/me/profile-image",
+      "service": "identity"
+    },
+    {
       "file": "programmes.py",
       "method": "PUT",
       "path": "/v1/programmes/{slug}/entity-types/{categoryCode}",
       "service": "programmes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "DELETE",
-      "path": "/v1/geodata/import-uploads/{uploadId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "DELETE",
-      "path": "/v1/geodata/load-test-runs/{testRunId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/adapters",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/conflation",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/entities",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/entities/{entityId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/entities/{entityId}/audit",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/entity-deletion-jobs/{jobId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/import-uploads/{uploadId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/imports",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/imports/{runId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/imports/{runId}/candidates",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/imports/{runId}/processing-queues/{queueId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/location-options",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/refresh-schedules",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "GET",
-      "path": "/v1/geodata/tiles/{z}/{x}/{y}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "PATCH",
-      "path": "/v1/geodata/entities/{entityId}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/conflation/{candidateId}/resolve",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/entities/{entityId}/location-enrichment-requests",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/entities/{entityId}/reviews",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/entity-deletion-jobs",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/entity-deletion-jobs/{jobId}/confirm",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/import-uploads",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/import-uploads/{uploadId}/complete",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "common.py",
-      "method": "POST",
-      "path": "/v1/geodata/import-uploads/{uploadId}/parts/{partNumber}",
-      "service": "common"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/import-uploads/{uploadId}/parts/{partNumber}",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/imports",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/imports/{runId}/candidates/validate",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/imports/{runId}/process",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/imports/{runId}/processed",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/proposals",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/refresh-schedules",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "POST",
-      "path": "/v1/geodata/refresh-schedules/{scheduleId}/run",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "PUT",
-      "path": "/v1/geodata/entities/{entityId}/categories",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "PUT",
-      "path": "/v1/geodata/entities/{entityId}/geometry",
-      "service": "geodata_routes"
-    },
-    {
-      "file": "geodata_routes.py",
-      "method": "PUT",
-      "path": "/v1/geodata/imports/{runId}/cancellation",
-      "service": "geodata_routes"
     }
   ]
 }

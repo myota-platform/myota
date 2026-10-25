@@ -5,6 +5,7 @@ import {
   canBrowseEntities,
   hasAnyScope,
   isGlobalAdministrator,
+  mayGrantRole,
   roleAssignmentPayload,
 } from "../src/lib/adminAccess.ts";
 
@@ -44,6 +45,40 @@ test("GIS location access mirrors the service GIS_ADMIN compatibility rule", () 
       roles: [{ role: "GIS_ADMIN" }],
     }),
     true,
+  );
+});
+
+test("role grants require strictly lower effective authority", () => {
+  const identityAdmin = {
+    id: "identity-admin",
+    email: "",
+    displayName: "",
+    scopes: ["identity.me", "identity.admin", "identity.roles.assign"],
+  };
+  assert.equal(
+    mayGrantRole(identityAdmin, {
+      scopes: ["identity.admin", "identity.roles.assign"],
+    }),
+    false,
+  );
+  assert.equal(
+    mayGrantRole(identityAdmin, { scopes: ["geodata.review"] }),
+    false,
+  );
+  assert.equal(mayGrantRole(identityAdmin, { scopes: [] }), true);
+  assert.equal(
+    mayGrantRole(
+      { ...identityAdmin, scopes: ["identity.me", "*"] },
+      { scopes: ["identity.admin"] },
+    ),
+    true,
+  );
+  assert.equal(
+    mayGrantRole(
+      { ...identityAdmin, scopes: ["identity.me", "*"] },
+      { scopes: ["*"] },
+    ),
+    false,
   );
 });
 

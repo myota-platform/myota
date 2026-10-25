@@ -29,6 +29,91 @@ class ObservabilityConfigurationTests(unittest.TestCase):
             self.assertEqual(dashboard["timezone"], "utc")
             self.assertIsInstance(dashboard["editable"], bool)
 
+    def test_complete_dashboard_set_matches_between_compose_and_helm(self):
+        def inventory(directory):
+            result = {}
+            for path in directory.rglob("*.json"):
+                data = json.loads(
+                    path.read_text().replace("{{MYOTA_NAMESPACE}}", "myota")
+                )
+                self.assertNotIn(data["uid"], result, path)
+                result[data["uid"]] = data
+            return result
+
+        self.assertEqual(
+            inventory(ROOT / "observability/grafana/dashboards"),
+            inventory(ROOT / "helm/myota/observability/grafana/dashboards"),
+        )
+
+    def test_outbox_dashboard_is_mounted_by_helm(self):
+        template = (ROOT / "helm/myota/templates/observability.yaml").read_text()
+        self.assertIn("myota-outbox-relay.json: |", template)
+        self.assertIn(
+            "/etc/grafana/dashboards/myota-outbox-relay.json", template
+        )
+
+    def test_email_dashboard_is_provisioned_and_uses_bounded_metrics(self):
+        dashboard = json.loads(
+            (
+                ROOT
+                / "observability/grafana/dashboards/myota-email-delivery.json"
+            ).read_text()
+        )
+        expressions = [
+            target.get("expr", "")
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+        ]
+        self.assertTrue(
+            any("myota_email_queue_pending_messages" in expr for expr in expressions)
+        )
+        self.assertTrue(
+            any("myota_email_queue_oldest_message_age_seconds" in expr for expr in expressions)
+        )
+        self.assertTrue(
+            any("myota_email_smtp_delivery_duration_seconds" in expr for expr in expressions)
+        )
+        self.assertFalse(
+            any("account_id" in expr or "email_address" in expr for expr in expressions)
+        )
+        template = (ROOT / "helm/myota/templates/observability.yaml").read_text()
+        self.assertIn("myota-email-delivery.json: |", template)
+        self.assertIn("/etc/grafana/dashboards/myota-email-delivery.json", template)
+
+    def test_email_operational_alerts_use_bounded_metrics(self):
+        rules = (ROOT / "observability/rules.yml").read_text()
+        for name in (
+            "MyOTAEmailQueueOldestCommandAge",
+            "MyOTAEmailQueueNearCapacity",
+            "MyOTAEmailDeadLettersIncreasing",
+            "MyOTAEmailSMTPUnavailable",
+            "MyOTAEmailSMTPLatencyHigh",
+        ):
+            self.assertIn(name, rules)
+        self.assertNotIn("email_address", rules)
+        self.assertNotIn("account_id", rules)
+
+    def test_trace_to_log_query_filters_structured_metadata(self):
+        import yaml
+
+        for prefix in ("observability", "helm/myota/observability"):
+            config = yaml.safe_load(
+                (
+                    ROOT
+                    / prefix
+                    / "grafana/provisioning/datasources/datasources.yml"
+                ).read_text()
+            )
+            tempo = next(
+                d for d in config["datasources"] if d["uid"] == "myota-tempo"
+            )
+            query = tempo["jsonData"]["tracesToLogsV2"]
+            self.assertTrue(query["customQuery"])
+            self.assertFalse(query["filterByTraceID"])
+            self.assertEqual(
+                query["query"], '{$${__tags}} | trace_id="$${__span.traceId}"'
+            )
+
     def test_postgres_monitor_role_job_does_not_block_fresh_install(self):
         template = (
             ROOT / "helm/myota/templates/observability.yaml"
@@ -52,6 +137,13 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         self.assertIn("otlp/tempo", config)
         self.assertIn("endpoint: 0.0.0.0:8889", config)
 
+    def test_helm_collector_scrapes_activity_notifications_service(self):
+        config = (
+            ROOT / "helm/myota/observability/otel-collector.yaml"
+        ).read_text()
+        self.assertIn("myota-activity-notifications:9110", config)
+        self.assertNotIn("myota-myota-activity-notifications:9110", config)
+
     def test_dashboard_is_real_data_only(self):
         dashboard = json.loads(
             (
@@ -69,7 +161,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         ]
         self.assertTrue(
             any(
-                "myota_identity_users_total" in expression
+                "myota_identity_users{" in expression
                 for expression in expressions
             )
         )
@@ -91,11 +183,177 @@ class ObservabilityConfigurationTests(unittest.TestCase):
                 for expression in expressions
             )
         )
+        self.assertTrue(
+            any(
+                "myota_programmes{" in expression for expression in expressions
+            )
+        )
+        self.assertFalse(
+            any(
+                "myota_identity_users_total" in expression
+                or "myota_programmes_total" in expression
+                for expression in expressions
+            )
+        )
         self.assertFalse(
             any(
                 "vector(1)" in expression or "count(up)" in expression
                 for expression in expressions
             )
+        )
+
+    def test_trace_dashboard_uses_supported_bounded_tempo_searches(self):
+        dashboard = json.loads(
+            (
+                ROOT
+                / "observability"
+                / "grafana"
+                / "dashboards"
+                / "myota-traces.json"
+            ).read_text()
+        )
+        self.assertEqual(dashboard["uid"], "myota-traces")
+        self.assertEqual(dashboard["time"], {"from": "now-30m", "to": "now"})
+        self.assertEqual(dashboard["refresh"], "30s")
+        self.assertEqual(dashboard["timezone"], "utc")
+        queries = [
+            target
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+        ]
+        self.assertEqual(len(queries), 2)
+        self.assertTrue(
+            all(
+                query.get("datasource", {}).get("uid") == "myota-tempo"
+                and query.get("queryType") == "traceql"
+                and query.get("tableType") == "traces"
+                and query.get("limit") == 50
+                for query in queries
+            )
+        )
+        query_text = "\n".join(query["query"] for query in queries)
+        self.assertIn("span:status = error", query_text)
+        self.assertIn("trace:duration > 1s", query_text)
+        self.assertIn('resource.service.namespace = "myota"', query_text)
+        self.assertTrue(all("metricsQuery" not in query for query in queries))
+        service_filter = dashboard["templating"]["list"][0]
+        service_names = [
+            option["value"] for option in service_filter["options"]
+        ]
+        self.assertEqual(service_filter["name"], "service")
+        self.assertEqual(service_filter["type"], "custom")
+        self.assertTrue(service_filter["includeAll"])
+        self.assertEqual(service_filter["allValue"], ".*")
+        self.assertEqual(service_names, sorted(set(service_names)))
+        self.assertTrue(
+            all(name.startswith("myota-") for name in service_names)
+        )
+        self.assertEqual(service_filter["query"], ",".join(service_names))
+        helm_template = (
+            ROOT / "helm/myota/templates/observability.yaml"
+        ).read_text()
+        self.assertIn("myota-traces.json", helm_template)
+        self.assertIn(
+            "/etc/grafana/dashboards/myota-traces.json", helm_template
+        )
+        datasources = (
+            ROOT
+            / "observability/grafana/provisioning/datasources/datasources.yml"
+        ).read_text()
+        self.assertIn("uid: myota-tempo", datasources)
+        self.assertIn("datasourceUid: myota-loki", datasources)
+
+    def test_log_to_trace_macro_survives_provisioning_environment_expansion(
+        self,
+    ):
+        for prefix in ("observability", "helm/myota/observability"):
+            config = (
+                ROOT
+                / prefix
+                / "grafana/provisioning/datasources/datasources.yml"
+            ).read_text()
+            self.assertIn("url: '$${__value.raw}'", config)
+            self.assertNotIn("url: '${__value.raw}'", config)
+
+    def test_logs_dashboard_uses_bounded_filters_and_privacy_safe_queries(
+        self,
+    ):
+        dashboard = json.loads(
+            (
+                ROOT
+                / "observability"
+                / "grafana"
+                / "dashboards"
+                / "myota-logs-failures.json"
+            ).read_text()
+        )
+        variables = dashboard["templating"]["list"]
+        self.assertEqual(
+            [variable["name"] for variable in variables],
+            ["environment", "service", "severity"],
+        )
+        for variable in variables:
+            options = [option["value"] for option in variable["options"]]
+            self.assertEqual(variable["type"], "custom")
+            self.assertTrue(variable["includeAll"])
+            self.assertEqual(variable["allValue"], ".*")
+            self.assertEqual(len(options), len(set(options)))
+            self.assertEqual(variable["query"], ",".join(options))
+        self.assertEqual(
+            [option["value"] for option in variables[0]["options"]],
+            ["development", "test", "testing", "production"],
+        )
+        self.assertTrue(
+            all(
+                option["value"].startswith("myota-")
+                for option in variables[1]["options"]
+            )
+        )
+        expressions = [
+            target.get("expr", "")
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+        ]
+        dashboard_json = json.dumps(dashboard)
+        self.assertNotIn("correlation_id", dashboard_json)
+        self.assertNotIn("component", dashboard_json)
+        self.assertTrue(
+            all("${component" not in expression for expression in expressions)
+        )
+        self.assertTrue(
+            all(
+                "${correlation_id" not in expression
+                for expression in expressions
+            )
+        )
+        self.assertIn(
+            'severity_text=~"WARN|WARNING|ERROR"', "\n".join(expressions)
+        )
+        # Application namespace is a fixed telemetry resource attribute, not
+        # the Kubernetes release namespace. Substitution hid Test failures.
+        helm_logs = (
+            ROOT
+            / "helm/myota/observability/grafana/dashboards/myota-logs-failures.json"
+        ).read_text()
+        self.assertNotIn("{{MYOTA_NAMESPACE}}", helm_logs)
+        for expression in expressions:
+            if (
+                expression.startswith("{")
+                or "rate({" in expression
+                or "count_over_time({" in expression
+            ):
+                self.assertIn('service_namespace="myota"', expression)
+        warnings = next(
+            panel for panel in dashboard["panels"] if panel["id"] == 2
+        )
+        self.assertIn("sum by (severity_text)", warnings["targets"][0]["expr"])
+        errors_panel = next(
+            panel for panel in dashboard["panels"] if panel["id"] == 3
+        )
+        self.assertEqual(errors_panel["title"], "Errors by service")
+        self.assertIn(
+            "sum by (service_name)",
+            errors_panel["targets"][0]["expr"],
         )
 
     def test_seaweed_dashboard_is_valid_and_rolls_out_with_helm(self):
@@ -118,11 +376,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
         dashboard = json.loads(dashboard_path.read_text())
         chart_dashboard = json.loads(chart_dashboard_path.read_text())
         deployment_template = (
-            ROOT
-            / "helm"
-            / "myota"
-            / "templates"
-            / "observability.yaml"
+            ROOT / "helm" / "myota" / "templates" / "observability.yaml"
         ).read_text()
 
         self.assertEqual(dashboard, chart_dashboard)
@@ -135,9 +389,7 @@ class ObservabilityConfigurationTests(unittest.TestCase):
 
     def test_loki_uses_s3_retention_and_native_otlp_pipeline(self):
         compose_config = (ROOT / "observability" / "loki.yaml").read_text()
-        helm_config = (
-            ROOT / "helm/myota/observability/loki.yaml"
-        ).read_text()
+        helm_config = (ROOT / "helm/myota/observability/loki.yaml").read_text()
         compose_collector = (
             ROOT / "observability" / "otel-collector.yaml"
         ).read_text()

@@ -337,5 +337,6 @@
   "timezone": "utc",
   "title": "MyOTA K3s workload health and capacity",
   "uid": "myota-k3s-workload",
-  "version": 1
+  "version": 1,
+  "description": "Kubernetes workload metrics from kube-state-metrics. Unavailable in standalone Compose without Kubernetes metrics; empty panels do not imply zero activity."
 }

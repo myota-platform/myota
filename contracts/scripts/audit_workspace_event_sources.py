@@ -24,10 +24,10 @@ OWNER_REPOSITORIES = {
     "programme-service": "apps/programmes",
     "activity-service": "apps/activity",
     "geodata-service": "apps/geodata",
-    
 }
+SOURCE_REPOSITORIES = (*OWNER_REPOSITORIES.values(), "apps/email")
 EVENT_TYPE = re.compile(
-    r"^(?:identity|programme|activity|awards|geodata)\."
+    r"^(?:identity|programme|activity|awards|geodata|email)\."
     r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.v[1-9][0-9]*$"
 )
 
@@ -104,7 +104,7 @@ def main() -> int:
         if not matched:
             errors.append(f"{event['eventType']}: no verified producer source")
 
-    for owner, repository_name in OWNER_REPOSITORIES.items():
+    for repository_name in SOURCE_REPOSITORIES:
         repository = workspace / repository_name
         if not repository.is_dir():
             errors.append(
@@ -131,7 +131,7 @@ def main() -> int:
 
     print(
         f"verified {len(facts)} registered fact types across "
-        f"{len(OWNER_REPOSITORIES)} authoritative repositories; "
+        f"{len(SOURCE_REPOSITORIES)} service source trees; "
         f"{len(work_source_types)} legacy work source types have registry dispositions; "
         "no undispositioned event-like source literals found"
     )

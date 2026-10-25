@@ -13,8 +13,8 @@ spec:
         {{ include "myota.waitForSchema" (dict "root" . "databaseUrlKey" "core-database-url") | nindent 8 }}
       containers:
         - name: identity-maintenance
-          image: {{ include "myota.imageReference" (dict "repository" .Values.image.repository "tag" .Values.image.tag "digest" .Values.imageRollout.digests.platform) | quote }}
-          command: ["python3", "services/identity_maintenance.py"]
+          image: {{ include "myota.imageReference" (dict "repository" (default .Values.image.repository .Values.services.identity.imageRepository) "tag" (default .Values.image.tag .Values.services.identity.imageTag) "digest" .Values.imageRollout.digests.identity) | quote }}
+          command: ["python3", "identity_maintenance.py"]
           env:
             - name: CORE_DATABASE_URL
               valueFrom: {secretKeyRef: {name: {{ .Values.postgres.existingSecret }}, key: core-database-url}}
@@ -24,4 +24,12 @@ spec:
               value: {{ .Values.auth.environment | quote }}
             - name: MYOTA_AUTH_SIGNING_KEY
               valueFrom: {secretKeyRef: {name: {{ .Values.auth.existingSecret }}, key: signing-key}}
+            - name: MYOTA_OBJECT_STORAGE_ENDPOINT
+              value: {{ .Values.objectStorage.endpoint | quote }}
+            - name: MYOTA_PROFILE_IMAGE_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.objectStorage.profileImageExistingSecret }}, key: {{ .Values.objectStorage.profileImageAccessKeyKey }}}}
+            - name: MYOTA_PROFILE_IMAGE_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.objectStorage.profileImageExistingSecret }}, key: {{ .Values.objectStorage.profileImageSecretKeyKey }}}}
+            - name: MYOTA_PROFILE_IMAGE_BUCKET
+              value: {{ .Values.objectStorage.profileImageBucket | quote }}
 {{- end }}

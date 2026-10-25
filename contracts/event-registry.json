@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "registryVersion": 1,
-  "status": "68 source-derived fact schemas and 10 bounded work-command schemas; runtime purpose and payload enforcement remain gated",
+  "status": "68 source-derived fact schemas and 11 bounded work-command schemas; email.send.v1 has a consumer implementation, while the Identity producer and runtime deployment remain gated",
   "factStream": "MYOTA_EVENTS",
   "factSubjectPrefix": "myota.events.",
   "activityWorkStream": "MYOTA_ACTIVITY_WORK",
   "activityWorkSubjectPrefix": "myota.work.activity.",
   "geodataWorkStream": "MYOTA_GEODATA_WORK",
   "geodataWorkSubjectPrefix": "myota.work.geodata.",
+  "emailWorkStream": "MYOTA_EMAIL_WORK",
+  "emailWorkSubjectPrefix": "myota.work.email.",
   "events": [
     {
       "eventType": "activity.activation.closed.v1",
@@ -4773,6 +4775,102 @@
         "apps/geodata/geodata_import_worker.py"
       ],
       "legacySubject": "myota.geodata.entity.delete.v1"
+    },
+    {
+      "workType": "email.send.v1",
+      "owner": "identity-service",
+      "class": "work-command",
+      "status": "consumer-implemented-producer-pending",
+      "subject": "myota.work.email.send.v1",
+      "stream": "MYOTA_EMAIL_WORK",
+      "durable": "email-delivery-v1",
+      "schema": "schemas/work/email-send-v1.schema.json",
+      "payloadEvidence": "proposed-versioned-allowlisted-template-reference; approved by email workstream decisions",
+      "maxPayloadBytes": 8192,
+      "deliverySemantics": "at-least-once; explicit acknowledgement after durable outcome; unknown version/template is never success-acked; transient failures retry under deployment-bounded policy; ambiguous SMTP acceptance can duplicate",
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "recipientAccountId",
+          "templateId",
+          "templateData"
+        ],
+        "properties": {
+          "recipientAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "maxLength": 36
+          },
+          "templateId": {
+            "type": "string",
+            "enum": [
+              "account-created-participant.v1",
+              "account-created-administrator.v1"
+            ],
+            "maxLength": 40
+          },
+          "templateData": {
+            "type": "object"
+          }
+        },
+        "allOf": [
+          {
+            "oneOf": [
+              {
+                "properties": {
+                  "templateId": {
+                    "const": "account-created-participant.v1"
+                  },
+                  "templateData": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["displayName"],
+                    "properties": {
+                      "displayName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "templateId": {
+                    "const": "account-created-administrator.v1"
+                  },
+                  "templateData": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["createdAccountName", "createdAccountRole"],
+                    "properties": {
+                      "createdAccountName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "createdAccountRole": {
+                        "type": "string",
+                        "enum": ["PARTICIPANT", "ADMINISTRATOR"],
+                        "maxLength": 20
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "workIdSource": "myota_identity.email_delivery_intent.id",
+      "producerSources": [
+        "apps/identity/identity.py"
+      ],
+      "consumerSources": [
+        "apps/email/email_worker.py"
+      ]
     },
     {
       "workType": "geodata.location-enrichment.v1",

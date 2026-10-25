@@ -35,7 +35,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate({service_namespace=\"{{MYOTA_NAMESPACE}}\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | component=~\"${component:regex}\" | correlation_id=~\"${correlation_id:regex}\"[1m]))",
+          "expr": "sum(rate({service_namespace=\"myota\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\"[1m]))",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -76,7 +76,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (severity) (rate({service_namespace=\"{{MYOTA_NAMESPACE}}\"} | severity_text=~\"WARN|ERROR\" | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | component=~\"${component:regex}\"[5m]))",
+          "expr": "sum by (severity_text) (rate({service_namespace=\"myota\"} | severity_text=~\"WARN|WARNING|ERROR\" | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\"[5m]))",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -102,7 +102,7 @@
     },
     {
       "id": 3,
-      "title": "Errors by service and component",
+      "title": "Errors by service",
       "type": "bargauge",
       "gridPos": {
         "x": 0,
@@ -117,7 +117,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service_name, component) (count_over_time({service_namespace=\"{{MYOTA_NAMESPACE}}\"} | severity_text=\"ERROR\" | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | component=~\"${component:regex}\"[5m]))",
+          "expr": "sum by (service_name) (count_over_time({service_namespace=\"myota\"} | severity_text=\"ERROR\" | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\"[5m]))",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -159,7 +159,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service_namespace=\"{{MYOTA_NAMESPACE}}\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | component=~\"${component:regex}\" | correlation_id=~\"${correlation_id:regex}\" | severity_text=~\"WARN|ERROR\"",
+          "expr": "{service_namespace=\"myota\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | severity_text=~\"WARN|WARNING|ERROR\"",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -195,7 +195,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service_namespace=\"{{MYOTA_NAMESPACE}}\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | component=~\"${component:regex}\" | correlation_id=~\"${correlation_id:regex}\" | event=~\"job.retry|job.failed\"",
+          "expr": "{service_namespace=\"myota\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | event=~\"job.retry|job.failed\"",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -231,43 +231,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service_namespace=\"{{MYOTA_NAMESPACE}}\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | component=~\"${component:regex}\" | correlation_id=~\"${correlation_id:regex}\" | event=\"http.request.completed\" | severity_text=\"ERROR\"",
-          "queryType": "range",
-          "datasource": {
-            "type": "loki",
-            "uid": "myota-loki"
-          }
-        }
-      ],
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      }
-    },
-    {
-      "id": 7,
-      "title": "Business workflow by correlation ID",
-      "type": "logs",
-      "gridPos": {
-        "x": 0,
-        "y": 28,
-        "w": 24,
-        "h": 10
-      },
-      "datasource": {
-        "type": "loki",
-        "uid": "myota-loki"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "{service_namespace=\"{{MYOTA_NAMESPACE}}\"} | correlation_id=~\"${correlation_id:regex}\"",
+          "expr": "{service_namespace=\"myota\"} | service_name=~\"${service:regex}\" | deployment_environment=~\"${environment:regex}\" | severity_text=~\"${severity:regex}\" | event=\"http.request.completed\" | severity_text=\"ERROR\"",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -355,64 +319,150 @@
   "templating": {
     "list": [
       {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Environment",
+        "multi": false,
         "name": "environment",
-        "type": "textbox",
-        "label": "Environment regex",
-        "query": ".*",
-        "current": {
-          "selected": true,
-          "text": ".*",
-          "value": ".*"
-        },
-        "hide": 0
+        "options": [
+          {
+            "selected": false,
+            "text": "development",
+            "value": "development"
+          },
+          {
+            "selected": false,
+            "text": "test",
+            "value": "test"
+          },
+          {
+            "selected": false,
+            "text": "testing",
+            "value": "testing"
+          },
+          {
+            "selected": false,
+            "text": "production",
+            "value": "production"
+          }
+        ],
+        "query": "development,test,testing,production",
+        "type": "custom"
       },
       {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": false,
         "name": "service",
-        "type": "textbox",
-        "label": "Service regex",
-        "query": ".*",
-        "current": {
-          "selected": true,
-          "text": ".*",
-          "value": ".*"
-        },
-        "hide": 0
+        "options": [
+          {
+            "selected": false,
+            "text": "myota-activity",
+            "value": "myota-activity"
+          },
+          {
+            "selected": false,
+            "text": "myota-activity-notifications",
+            "value": "myota-activity-notifications"
+          },
+          {
+            "selected": false,
+            "text": "myota-activity-outbox",
+            "value": "myota-activity-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-core-outbox",
+            "value": "myota-core-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-geo-outbox",
+            "value": "myota-geo-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-geodata",
+            "value": "myota-geodata"
+          },
+          {
+            "selected": false,
+            "text": "myota-geodata-import-processing",
+            "value": "myota-geodata-import-processing"
+          },
+          {
+            "selected": false,
+            "text": "myota-identity",
+            "value": "myota-identity"
+          },
+          {
+            "selected": false,
+            "text": "myota-programmes",
+            "value": "myota-programmes"
+          }
+        ],
+        "query": "myota-activity,myota-activity-notifications,myota-activity-outbox,myota-core-outbox,myota-geo-outbox,myota-geodata,myota-geodata-import-processing,myota-identity,myota-programmes",
+        "type": "custom"
       },
       {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Severity",
+        "multi": false,
         "name": "severity",
-        "type": "textbox",
-        "label": "Severity regex",
-        "query": ".*",
-        "current": {
-          "selected": true,
-          "text": ".*",
-          "value": ".*"
-        },
-        "hide": 0
-      },
-      {
-        "name": "component",
-        "type": "textbox",
-        "label": "Component regex",
-        "query": ".*",
-        "current": {
-          "selected": true,
-          "text": ".*",
-          "value": ".*"
-        },
-        "hide": 0
-      },
-      {
-        "name": "correlation_id",
-        "type": "textbox",
-        "label": "Correlation ID",
-        "query": ".*",
-        "current": {
-          "selected": true,
-          "text": ".*",
-          "value": ".*"
-        },
-        "hide": 0
+        "options": [
+          {
+            "selected": false,
+            "text": "DEBUG",
+            "value": "DEBUG"
+          },
+          {
+            "selected": false,
+            "text": "INFO",
+            "value": "INFO"
+          },
+          {
+            "selected": false,
+            "text": "WARN",
+            "value": "WARN"
+          },
+          {
+            "selected": false,
+            "text": "WARNING",
+            "value": "WARNING"
+          },
+          {
+            "selected": false,
+            "text": "ERROR",
+            "value": "ERROR"
+          },
+          {
+            "selected": false,
+            "text": "CRITICAL",
+            "value": "CRITICAL"
+          }
+        ],
+        "query": "DEBUG,INFO,WARN,WARNING,ERROR,CRITICAL",
+        "type": "custom"
       }
     ]
   },
@@ -431,6 +481,6 @@
   "timezone": "utc",
   "title": "MyOTA Logs / Failures",
   "uid": "myota-logs-failures",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

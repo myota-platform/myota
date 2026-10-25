@@ -23,9 +23,10 @@ datasources:
             value: service_name
           - key: deployment.environment
             value: deployment_environment
-        filterByTraceID: true
+        filterByTraceID: false
         filterBySpanID: false
-        customQuery: false
+        customQuery: true
+        query: '{$${__tags}} | trace_id="$${__span.traceId}"'
   - name: MyOTA Loki
     uid: myota-loki
     type: loki
@@ -39,7 +40,7 @@ datasources:
           matcherType: label
           matcherRegex: trace_id
           datasourceUid: myota-tempo
-          url: '${__value.raw}'
+          url: '$${__value.raw}'
           urlDisplayLabel: View trace
   - name: MyOTA Alertmanager
     uid: myota-alertmanager

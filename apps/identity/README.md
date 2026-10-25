@@ -21,9 +21,28 @@ optional per-programme OIDC mappings.
 - The identity service does not own programmes, entities, activity/QSOs,
   awards, or admin-web presentation; those boundaries are defined in the
   [repository map](https://github.com/myota-platform/myota-docs/blob/main/docs/repository-map.md).
-- The current slice includes login, registration, account administration,
+- The current slice includes login, account administration,
   callsign verification fields, scoped roles, privacy export/deactivation,
   and security-event primitives.
+
+Public participant registration is disabled until verified-email setup and
+registration abuse controls are implemented and enabled. Account creation
+requires `identity.accounts.create`; new accounts receive the `PARTICIPANT`
+role and stay in `PENDING_SETUP` without a password. Granting additional roles
+also requires `identity.roles.assign`; callers can grant only roles whose
+permissions are a strict subset of their current permissions, and cannot
+change their own roles. Invitation and credential setup are still pending the
+email-delivery workstream.
+
+The email worker resolves addresses only through the internal
+`GET /v1/identity/internal/email-recipients/{accountId}` API. Identity issues
+that worker a five-minute token with the fixed `identity.email.resolve` scope
+from the Secret-backed `MYOTA_EMAIL_SERVICE_CLIENT_SECRET`; callers cannot
+select scopes. The endpoint returns only the current deliverable address and
+accepts only active accounts. Missing, pending-setup, deactivated, and
+unaddressable accounts share the same HTTP 404 response. The public Gateway rejects `/v1/identity/internal/`. Deploy must
+provision the client credential as a runtime Secret before the endpoint can be
+used. Addresses must not appear in logs, telemetry, or NATS payloads.
 
 Global operators are exempt from the general per-account/source login-attempt
 throttle so repeated legitimate administrator sign-ins do not lock out the
@@ -37,10 +56,17 @@ Account administration also exposes the Phase 1 resource aliases: `PATCH
 /v1/identity/accounts/{accountId}/primary-callsign`. The older action routes
 remain compatibility aliases. See the [Phase 1 API resource update record](https://github.com/myota-platform/myota-docs/blob/main/docs/api-phase1-resource-updates.md).
 
-The unit-test adapter can run in memory. Durable Compose/Kubernetes operation
-uses PostgreSQL through the platform/deployment configuration and requires
-explicit production secrets; do not use the test adapter as a production
-data store.
+The unit-test adapter can run in memory. Durable runtime loads Identity-owned
+accounts, credentials, role definitions and assignments, sessions, revocations,
+recovery tokens, login limits, callsign evidence, security events, and OIDC
+mappings from their PostgreSQL tables inside each request transaction. Writes
+are serialized with a transaction-scoped advisory lock across replicas; reads
+use a repeatable-read snapshot. Startup and requests fail closed unless the
+restartable `service-state-jsonb-v1` backfill marker exists. The legacy
+`service_state` row is retained for migration recovery and is not read or
+written by Identity runtime code. Apply Core migrations `002` and `003` before
+rolling out this runtime. Production secrets remain deployment-managed; do not
+use the test adapter as a production data store.
 
 ## Test and run locally
 

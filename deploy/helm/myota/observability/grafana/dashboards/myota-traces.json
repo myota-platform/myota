@@ -1,0 +1,250 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Search Tempo traces for failures and end-to-end traces longer than one second. The 1s query is an investigation starting point, not a latency SLO. Trace rows open their detail view. Queries use stored spans only; no metrics-generator series are required.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "myota-tempo"
+      },
+      "description": "Stored traces with at least one error span in the selected time range. Select a row to inspect its spans and timing.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.2.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "myota-tempo"
+          },
+          "limit": 50,
+          "metricsQueryType": "range",
+          "query": "{ resource.service.namespace = \"myota\" && resource.service.name =~ \"${service:regex}\" && span:status = error }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Failed traces",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "myota-tempo"
+      },
+      "description": "Stored end-to-end traces over one second. Change the threshold in this TraceQL query when investigating a different service objective; this default is not an SLO.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 2,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.2.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "myota-tempo"
+          },
+          "limit": 50,
+          "metricsQueryType": "range",
+          "query": "{ resource.service.namespace = \"myota\" && resource.service.name =~ \"${service:regex}\" && trace:duration > 1s }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Slow traces over 1 second",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "myota",
+    "traces",
+    "tempo"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "hide": 0,
+        "label": "Service",
+        "multi": false,
+        "name": "service",
+        "options": [
+          {
+            "selected": false,
+            "text": "myota-activity",
+            "value": "myota-activity"
+          },
+          {
+            "selected": false,
+            "text": "myota-activity-notifications",
+            "value": "myota-activity-notifications"
+          },
+          {
+            "selected": false,
+            "text": "myota-activity-outbox",
+            "value": "myota-activity-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-core-outbox",
+            "value": "myota-core-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-geo-outbox",
+            "value": "myota-geo-outbox"
+          },
+          {
+            "selected": false,
+            "text": "myota-geodata",
+            "value": "myota-geodata"
+          },
+          {
+            "selected": false,
+            "text": "myota-geodata-import-processing",
+            "value": "myota-geodata-import-processing"
+          },
+          {
+            "selected": false,
+            "text": "myota-identity",
+            "value": "myota-identity"
+          },
+          {
+            "selected": false,
+            "text": "myota-programmes",
+            "value": "myota-programmes"
+          }
+        ],
+        "query": "myota-activity,myota-activity-notifications,myota-activity-outbox,myota-core-outbox,myota-geo-outbox,myota-geodata,myota-geodata-import-processing,myota-identity,myota-programmes",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "MyOTA Distributed Traces",
+  "uid": "myota-traces",
+  "version": 1,
+  "weekStart": ""
+}

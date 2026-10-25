@@ -1,0 +1,39 @@
+{{- if .Values.services.email.enabled }}
+{{- if not .Values.jetstreamProvisioner.enabled }}
+{{- fail "services.email.enabled requires jetstreamProvisioner.enabled" }}
+{{- end }}
+{{- if not .Values.jetstreamProvisioner.confirmedMigrationGate }}
+{{- fail "email JetStream provisioning requires confirmed capacity and recovery review" }}
+{{- end }}
+{{- $capacity := .Values.jetstreamProvisioner.capacity }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: myota-email-jetstream-provisioner-{{ .Release.Revision }}
+  annotations:
+    myota.org/job-purpose: email-jetstream-topology-provisioning
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myota
+        app.kubernetes.io/component: email-jetstream-provisioner
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: provisioner
+          image: {{ include "myota.imageReference" (dict "repository" (default .Values.image.repository .Values.jetstreamProvisioner.imageRepository) "tag" (default .Values.image.tag .Values.jetstreamProvisioner.imageTag) "digest" .Values.imageRollout.digests.platform) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          command: ["python3", "/app/services/provision_jetstream.py"]
+          env:
+            - {name: NATS_URL, value: {{ .Values.nats.url | quote }}}
+            - {name: NATS_TOPOLOGY_APPLY, value: "1"}
+            - {name: NATS_TOPOLOGY_SCOPE, value: "email-work"}
+            - {name: NATS_EMAIL_WORK_MAX_AGE_SECONDS, value: {{ required "jetstreamProvisioner.capacity.emailWorkMaxAgeSeconds is required" $capacity.emailWorkMaxAgeSeconds | quote }}}
+            - {name: NATS_EMAIL_WORK_MAX_BYTES, value: {{ required "jetstreamProvisioner.capacity.emailWorkMaxBytes is required" $capacity.emailWorkMaxBytes | quote }}}
+            - {name: NATS_EMAIL_WORK_MAX_MESSAGES, value: {{ required "jetstreamProvisioner.capacity.emailWorkMaxMessages is required" $capacity.emailWorkMaxMessages | quote }}}
+            - {name: NATS_EMAIL_WORK_MAX_MESSAGE_BYTES, value: {{ required "jetstreamProvisioner.capacity.emailWorkMaxMessageBytes is required" $capacity.emailWorkMaxMessageBytes | quote }}}
+{{- end }}

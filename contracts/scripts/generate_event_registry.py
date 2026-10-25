@@ -40,7 +40,7 @@ def event_schema(event: dict) -> dict:
 def work_schema(work: dict) -> dict:
     work_type = work["workType"]
     safe = work_type.replace(".", "-")
-    return {
+    schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": f"https://github.com/myota-platform/myota-contracts/contracts/schemas/work/{safe}.schema.json",
         "title": f"{work_type} command envelope v1",
@@ -59,6 +59,11 @@ def work_schema(work: dict) -> dict:
         "x-producer-sources": work["producerSources"],
         "x-consumer-sources": work["consumerSources"],
     }
+    if "maxPayloadBytes" in work:
+        schema["x-max-payload-bytes"] = work["maxPayloadBytes"]
+    if "deliverySemantics" in work:
+        schema["x-delivery-semantics"] = work["deliverySemantics"]
+    return schema
 
 
 def main() -> None:

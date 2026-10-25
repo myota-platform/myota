@@ -57,7 +57,8 @@ class MyOTAClient:
         query: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
         content_type: str = "application/json",
-    ) -> dict[str, Any]:
+        accept: str = "application/json",
+    ) -> dict[str, Any] | bytes:
         if query:
             from urllib.parse import urlencode
 
@@ -70,7 +71,7 @@ class MyOTAClient:
             else json.dumps(body).encode()
         )
         headers = {
-            "Accept": "application/json",
+            "Accept": accept,
             "X-Request-ID": "client-generated",
         }
         if payload is not None:
@@ -91,7 +92,10 @@ class MyOTAClient:
                 ),
                 timeout=self.timeout,
             ) as response:
-                return json.loads(response.read() or b"{}")
+                response_body = response.read()
+                if accept == "image/webp":
+                    return response_body
+                return json.loads(response_body or b"{}")
         except Exception as exc:
             if hasattr(exc, "read"):
                 body_data = json.loads(exc.read() or b"{}")
@@ -156,6 +160,40 @@ class MyOTAClient:
         return self._write(
             "PATCH", f"/v1/identity/accounts/{account_id}", body
         )
+
+    def patch_identity_profile(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self._write("PATCH", "/v1/identity/me/profile", body)
+
+    def get_identity_profile_image(self) -> bytes:
+        result = self.request(
+            "GET",
+            "/v1/identity/me/profile-image",
+            accept="image/webp",
+        )
+        return result if isinstance(result, bytes) else b""
+
+    def put_identity_profile_image(
+        self, content: bytes, media_type: str
+    ) -> dict[str, Any]:
+        result = self.request(
+            "PUT",
+            "/v1/identity/me/profile-image",
+            content,
+            content_type=media_type,
+        )
+        return result if isinstance(result, dict) else {}
+
+    def delete_identity_profile_image(self) -> dict[str, Any]:
+        result = self.request("DELETE", "/v1/identity/me/profile-image", {})
+        return result if isinstance(result, dict) else {}
+
+    def get_account_profile_image(self, account_id: str) -> bytes:
+        result = self.request(
+            "GET",
+            f"/v1/identity/accounts/{account_id}/profile-image",
+            accept="image/webp",
+        )
+        return result if isinstance(result, bytes) else b""
 
     def create_identity_role(self, body: dict[str, Any]) -> dict[str, Any]:
         return self._write("POST", "/v1/identity/roles", body)

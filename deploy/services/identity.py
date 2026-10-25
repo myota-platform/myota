@@ -9,11 +9,15 @@ import os
 import re
 import secrets
 import time
+import uuid
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from common import (
+    BinaryResponse,
     JsonHandler,
     Store,
     hash_secret,
@@ -25,6 +29,7 @@ from common import (
     verify_secret,
     verify_token,
 )
+from profile_images import normalize_profile_image, profile_image_store
 
 
 ACCESS_SECONDS = int(os.environ.get("MYOTA_ACCESS_TOKEN_SECONDS", "600"))
@@ -41,6 +46,11 @@ ADMIN_PERMISSION_CATALOG = [
         "code": "observability.view",
         "label": "View platform metrics and dashboards",
         "group": "Observability",
+    },
+    {
+        "code": "identity.accounts.create",
+        "label": "Create participant accounts",
+        "group": "Identity",
     },
     {
         "code": "identity.admin",
@@ -123,6 +133,13 @@ ADMIN_PERMISSION_CATALOG = [
 ADMIN_PERMISSION_CODES = {item["code"] for item in ADMIN_PERMISSION_CATALOG}
 DEFAULT_ROLE_DEFINITIONS = [
     {
+        "code": "PARTICIPANT",
+        "name": "Participant",
+        "description": "Base participant access without administrative permissions.",
+        "scopes": [],
+        "system": True,
+    },
+    {
         "code": "GLOBAL_OPERATOR",
         "name": "Global administrator",
         "description": "Full platform administration, including role management.",
@@ -134,6 +151,7 @@ DEFAULT_ROLE_DEFINITIONS = [
         "name": "Identity administrator",
         "description": "Manage users, callsigns and role assignments.",
         "scopes": [
+            "identity.accounts.create",
             "identity.admin",
             "identity.roles.assign",
             "identity.audit.read",
@@ -371,6 +389,12 @@ class IdentityHandler(JsonHandler):
             raise PermissionError("access token required")
         if claims.get("jti") in IdentityHandler._bucket("revokedJti"):
             raise PermissionError("token has been revoked")
+        if claims.get("tokenType") == "access":
+            account = IdentityHandler.store.items.get(claims.get("sub"))
+            if not account or account.get("status") != "ACTIVE":
+                raise PermissionError("account is inactive or unavailable")
+            claims["roles"] = IdentityHandler._roles(account["id"])
+            claims["scp"] = IdentityHandler._scopes(account["id"])
         granted = set(claims.get("scp", []))
         if scopes and "*" not in granted and not set(scopes).issubset(granted):
             raise PermissionError("required scope is missing")
@@ -387,19 +411,23 @@ class IdentityHandler(JsonHandler):
         event_type: str,
         payload: dict[str, Any],
         aggregate_id: str | None = None,
+        actor_id: str | None = None,
     ) -> None:
+        safe_payload = dict(payload)
+        if actor_id:
+            safe_payload["actorId"] = actor_id
         record = {
             "id": new_id(),
             "eventType": event_type,
             "occurredAt": now(),
-            "payload": payload,
+            "payload": safe_payload,
         }
         IdentityHandler._bucket("securityEvents")[record["id"]] = record
         IdentityHandler.store.event(
             event_type,
             "account",
             aggregate_id or payload.get("accountId", "system"),
-            payload,
+            safe_payload,
         )
 
     @staticmethod
@@ -478,6 +506,17 @@ class IdentityHandler(JsonHandler):
         return removed
 
     @staticmethod
+    def cleanup_profile_images() -> int:
+        """Delete queued and crash-orphaned objects from the private bucket."""
+        references = {
+            (str(account["id"]), str(image["id"]))
+            for account in IdentityHandler.store.items.values()
+            if isinstance((image := account.get("profileImage")), dict)
+            and image.get("id")
+        }
+        return profile_image_store.delete_orphans(references)
+
+    @staticmethod
     def _mint_tokens(
         account: dict[str, Any], p: dict[str, str]
     ) -> dict[str, Any]:
@@ -522,36 +561,59 @@ class IdentityHandler(JsonHandler):
             "refreshToken": refresh,
             "tokenType": "Bearer",
             "expiresIn": ACCESS_SECONDS,
-            "account": account,
+            "account": IdentityHandler._profile_account(account),
         }
 
     @staticmethod
     def create_account(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
         body = p["_body"]
-        require(body, "displayName", "participationType")
+        actor = IdentityHandler._admin_authorize(p, "identity.accounts.create")
+        require(body, "displayName", "participationType", "email")
+        if "password" in body:
+            raise ValueError(
+                "passwords cannot be set during account creation; use the invitation setup flow"
+            )
+        if body.get("roles") is not None and not isinstance(
+            body.get("roles"), list
+        ):
+            raise ValueError("roles must be an array")
         if body["participationType"] not in ("OPERATOR", "SWL"):
             raise ValueError("participationType must be OPERATOR or SWL")
-        if body.get("email") and IdentityHandler._account_for_email(
-            body["email"]
-        ):
-            raise ValueError("email already exists")
+        normalized_email = str(body["email"]).strip().casefold()
+        if "@" not in normalized_email:
+            raise ValueError("email must be a valid address")
+        requested_roles = body.get("roles", [])
+        if any(not isinstance(role, dict) for role in requested_roles):
+            raise ValueError("each role assignment must be an object")
 
         def create() -> dict[str, Any]:
+            if IdentityHandler._account_for_email(normalized_email):
+                raise ValueError("email already exists")
             account_id = new_id()
+            if requested_roles:
+                role_actor = IdentityHandler._admin_authorize(
+                    p, "identity.roles.assign"
+                )
+                IdentityHandler._validate_role_grants(
+                    [{"code": "PARTICIPANT"}, *requested_roles],
+                    role_actor,
+                    account_id,
+                )
             account = {
                 "id": account_id,
                 "displayName": body["displayName"],
-                "email": body.get("email"),
+                "email": normalized_email,
                 "participationType": body["participationType"],
-                "status": "ACTIVE",
+                "status": "PENDING_SETUP",
+                "websiteUrl": None,
+                "biographyMarkdown": None,
+                "profileImage": None,
                 "callsigns": [],
                 "primaryCallsignId": None,
                 "createdAt": now(),
                 "updatedAt": now(),
             }
             IdentityHandler.store.items[account_id] = account
-            if body.get("password"):
-                IdentityHandler._set_password(account_id, body["password"])
             if body.get("callsign"):
                 IdentityHandler._add_callsign(
                     account, body["callsign"], "UNVERIFIED", "self-asserted"
@@ -560,21 +622,48 @@ class IdentityHandler(JsonHandler):
                 "identity.account.created.v1",
                 "account",
                 account_id,
-                {"account": account},
+                {"account": account, "actorId": actor.get("sub")},
             )
-            return {**account, "_status": 201}
+            if requested_roles:
+                IdentityHandler._replace_roles(
+                    account_id,
+                    [{"code": "PARTICIPANT"}, *requested_roles],
+                    p,
+                )
+            else:
+                participant = {
+                    "id": new_id(),
+                    "accountId": account_id,
+                    "role": "PARTICIPANT",
+                    "programmeSlug": None,
+                    "jurisdiction": None,
+                    "entityType": None,
+                    "scopes": [],
+                    "createdAt": now(),
+                    "validTo": None,
+                }
+                IdentityHandler._bucket("roles")[participant["id"]] = (
+                    participant
+                )
+                IdentityHandler._audit(
+                    "identity.role.assigned.v1",
+                    participant,
+                    account_id,
+                    actor_id=actor.get("sub"),
+                )
+            return {
+                **account,
+                "roles": IdentityHandler._roles(account_id),
+                "_status": 201,
+            }
 
         return IdentityHandler.store.once(p.get("Idempotency-Key"), create)
 
     @staticmethod
     def register(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
-        body = p["_body"]
-        require(body, "displayName", "email", "password", "participationType")
-        if len(body["password"]) < 12:
-            raise ValueError("password must contain at least 12 characters")
-        created = IdentityHandler.create_account(_, p)
-        account = {k: v for k, v in created.items() if k != "_status"}
-        return {**IdentityHandler._mint_tokens(account, p), "_status": 201}
+        raise PermissionError(
+            "public participant registration is unavailable until email verification and abuse controls are deployed"
+        )
 
     @staticmethod
     def login(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
@@ -719,15 +808,233 @@ class IdentityHandler(JsonHandler):
     def current_account(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
         claims = IdentityHandler._auth(p)
         return {
-            **IdentityHandler._account(claims["sub"]),
+            **IdentityHandler._profile_account(
+                IdentityHandler._account(claims["sub"])
+            ),
             "roles": IdentityHandler._roles(claims["sub"]),
             "scopes": IdentityHandler._scopes(claims["sub"]),
         }
 
     @staticmethod
+    def _profile_account(account: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **account,
+            "websiteUrl": account.get("websiteUrl"),
+            "biographyMarkdown": account.get("biographyMarkdown"),
+            "profileImage": account.get("profileImage"),
+        }
+
+    @staticmethod
+    def _validate_profile_fields(
+        body: dict[str, Any], account: dict[str, Any]
+    ) -> None:
+        allowed = {"websiteUrl", "biographyMarkdown"}
+        unexpected = set(body) - allowed
+        if unexpected:
+            raise ValueError("profile update contains unsupported fields")
+        if not body:
+            raise ValueError("profile update must include a field")
+        updates: dict[str, Any] = {}
+
+        if "websiteUrl" in body:
+            website = body["websiteUrl"]
+            if website in (None, ""):
+                updates["websiteUrl"] = None
+            elif not isinstance(website, str):
+                raise ValueError("websiteUrl must be a string or null")
+            else:
+                website = website.strip()
+                if len(website) > 2048 or any(
+                    ord(character) < 0x20 or ord(character) == 0x7F
+                    for character in website
+                ):
+                    raise ValueError("websiteUrl is invalid or too long")
+                try:
+                    parsed = urlsplit(website)
+                    hostname = parsed.hostname
+                    _ = parsed.port
+                except ValueError as exc:
+                    raise ValueError("websiteUrl is invalid") from exc
+                if (
+                    parsed.scheme.lower() not in {"http", "https"}
+                    or not hostname
+                    or parsed.username is not None
+                    or parsed.password is not None
+                    or any(character.isspace() for character in website)
+                ):
+                    raise ValueError(
+                        "websiteUrl must be an HTTP or HTTPS URL without credentials"
+                    )
+                updates["websiteUrl"] = urlunsplit(
+                    (
+                        parsed.scheme.lower(),
+                        parsed.netloc,
+                        parsed.path,
+                        parsed.query,
+                        parsed.fragment,
+                    )
+                )
+
+        if "biographyMarkdown" in body:
+            biography = body["biographyMarkdown"]
+            if biography in (None, ""):
+                updates["biographyMarkdown"] = None
+            elif not isinstance(biography, str):
+                raise ValueError("biographyMarkdown must be a string or null")
+            elif len(biography) > 2000:
+                raise ValueError("biographyMarkdown exceeds 2000 characters")
+            else:
+                updates["biographyMarkdown"] = biography
+        account.update(updates)
+
+    @staticmethod
+    def update_own_profile(
+        _: JsonHandler, p: dict[str, Any]
+    ) -> dict[str, Any]:
+        claims = IdentityHandler._auth(p)
+        account = IdentityHandler._account(claims["sub"])
+        before = {
+            field: account.get(field)
+            for field in ("websiteUrl", "biographyMarkdown", "updatedAt")
+        }
+        IdentityHandler._validate_profile_fields(p["_body"], account)
+        account["updatedAt"] = now()
+        try:
+            IdentityHandler.store.persist()
+        except Exception:
+            for field, value in before.items():
+                if value is None:
+                    account.pop(field, None)
+                else:
+                    account[field] = value
+            raise
+        return IdentityHandler._profile_account(account)
+
+    @staticmethod
+    def _profile_image_target(
+        p: dict[str, Any], account_id: str
+    ) -> dict[str, Any]:
+        claims = IdentityHandler._auth(p)
+        scopes = set(claims.get("scp", []))
+        if (
+            claims.get("sub") != account_id
+            and "identity.admin" not in scopes
+            and "*" not in scopes
+        ):
+            raise PermissionError("profile image access is not permitted")
+        return IdentityHandler._account(account_id)
+
+    @staticmethod
+    def read_own_profile_image(
+        _: JsonHandler, p: dict[str, Any]
+    ) -> BinaryResponse:
+        claims = IdentityHandler._auth(p)
+        return IdentityHandler.read_profile_image_for_account(p, claims["sub"])
+
+    @staticmethod
+    def read_account_profile_image(
+        _: JsonHandler, p: dict[str, Any]
+    ) -> BinaryResponse:
+        return IdentityHandler.read_profile_image_for_account(
+            p, p["accountId"]
+        )
+
+    @staticmethod
+    def read_profile_image_for_account(
+        p: dict[str, Any], account_id: str
+    ) -> BinaryResponse:
+        account = IdentityHandler._profile_image_target(p, account_id)
+        image = account.get("profileImage")
+        if not image or not image.get("id"):
+            raise KeyError("profile image not found")
+        try:
+            content = profile_image_store.get(account_id, image["id"])
+        except FileNotFoundError as exc:
+            raise KeyError("profile image not found") from exc
+        except Exception as exc:
+            raise RuntimeError("profile image storage is unavailable") from exc
+        if len(content) > 256 * 1024:
+            raise RuntimeError("stored profile image exceeds its size limit")
+        return BinaryResponse(200, "image/webp", content)
+
+    @staticmethod
+    def upload_own_profile_image(
+        _: JsonHandler, p: dict[str, Any]
+    ) -> dict[str, Any]:
+        claims = IdentityHandler._auth(p)
+        account_id = claims["sub"]
+        account = IdentityHandler._account(account_id)
+        normalized = normalize_profile_image(
+            p.get("_raw_body") or b"", p.get("Content-Type", "")
+        )
+        image_id = new_id()
+        previous = account.get("profileImage")
+        try:
+            profile_image_store.put(account_id, image_id, normalized)
+        except Exception as exc:
+            raise RuntimeError("profile image storage is unavailable") from exc
+        account["profileImage"] = {
+            "id": image_id,
+            "contentType": "image/webp",
+            "width": 512,
+            "height": 512,
+            "updatedAt": now(),
+        }
+        account["updatedAt"] = now()
+        try:
+            IdentityHandler.store.persist()
+        except Exception:
+            if previous:
+                account["profileImage"] = previous
+            else:
+                account.pop("profileImage", None)
+            try:
+                profile_image_store.delete(account_id, image_id)
+            except Exception:
+                # The maintenance sweep removes an unreferenced upload later.
+                pass
+            raise RuntimeError("profile image could not be saved")
+        if previous and previous.get("id"):
+            try:
+                profile_image_store.delete(account_id, previous["id"])
+            except Exception:
+                # The orphan sweep retries failed object deletion after its grace period.
+                pass
+        return {"profileImage": account["profileImage"]}
+
+    @staticmethod
+    def delete_own_profile_image(
+        _: JsonHandler, p: dict[str, Any]
+    ) -> dict[str, Any]:
+        claims = IdentityHandler._auth(p)
+        account = IdentityHandler._account(claims["sub"])
+        previous = account.get("profileImage")
+        account["profileImage"] = None
+        before_updated_at = account.get("updatedAt")
+        account["updatedAt"] = now()
+        try:
+            IdentityHandler.store.persist()
+        except Exception:
+            account["profileImage"] = previous
+            if before_updated_at is None:
+                account.pop("updatedAt", None)
+            else:
+                account["updatedAt"] = before_updated_at
+            raise RuntimeError("profile image could not be removed")
+        if previous and previous.get("id"):
+            try:
+                profile_image_store.delete(account["id"], previous["id"])
+            except Exception:
+                # The orphan sweep retries failed object deletion after its grace period.
+                pass
+        return {"profileImage": None, "_status": 200}
+
+    @staticmethod
     def get_account(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
         IdentityHandler._auth(p, account_id=p["accountId"])
-        return IdentityHandler._account(p["accountId"])
+        return IdentityHandler._profile_account(
+            IdentityHandler._account(p["accountId"])
+        )
 
     @staticmethod
     def list_admin_accounts(
@@ -740,7 +1047,11 @@ class IdentityHandler(JsonHandler):
         status = query.get("status", [None])[0]
         search = query.get("q", [""])[0].casefold()
         accounts = [
-            {**account, "roles": IdentityHandler._roles(account["id"])}
+            {
+                **IdentityHandler._profile_account(account),
+                "roles": IdentityHandler._roles(account["id"]),
+                "scopes": IdentityHandler._scopes(account["id"]),
+            }
             for account in IdentityHandler.store.items.values()
         ]
         if status:
@@ -826,6 +1137,20 @@ class IdentityHandler(JsonHandler):
         IdentityHandler._admin_authorize(p, "identity.admin")
         account = IdentityHandler._account(p["accountId"])
         body = p["_body"]
+        previous_profile_image = account.get("profileImage")
+        profile_fields = {
+            key: value
+            for key, value in body.items()
+            if key in {"websiteUrl", "biographyMarkdown"}
+        }
+        normalized_profile = {
+            "websiteUrl": account.get("websiteUrl"),
+            "biographyMarkdown": account.get("biographyMarkdown"),
+        }
+        if profile_fields:
+            IdentityHandler._validate_profile_fields(
+                profile_fields, normalized_profile
+            )
         if "email" in body:
             email = body.get("email") or None
             if (
@@ -850,9 +1175,19 @@ class IdentityHandler(JsonHandler):
                 ):
                     raise ValueError("status must be ACTIVE or DEACTIVATED")
                 account[field] = body[field]
+        if profile_fields:
+            account.update(
+                {key: normalized_profile[key] for key in profile_fields}
+            )
         if body.get("anonymize") and account.get("status") == "DEACTIVATED":
             account.update(
-                {"displayName": "Deactivated account", "email": None}
+                {
+                    "displayName": "Deactivated account",
+                    "email": None,
+                    "websiteUrl": None,
+                    "biographyMarkdown": None,
+                    "profileImage": None,
+                }
             )
             for session in IdentityHandler._bucket("sessions").values():
                 if session["accountId"] == account["id"]:
@@ -883,38 +1218,33 @@ class IdentityHandler(JsonHandler):
                 or [{"code": code} for code in body.get("roleCodes", [])],
                 p,
             )
-        return {**account, "roles": IdentityHandler._roles(account["id"])}
+        IdentityHandler.store.persist()
+        if (
+            previous_profile_image
+            and previous_profile_image.get("id")
+            and not account.get("profileImage")
+        ):
+            try:
+                profile_image_store.delete(
+                    account["id"], previous_profile_image["id"]
+                )
+            except Exception:
+                # The orphan sweep retries failed object deletion after its grace period.
+                pass
+        return {
+            **IdentityHandler._profile_account(account),
+            "roles": IdentityHandler._roles(account["id"]),
+        }
 
     @staticmethod
     def _replace_roles(
         account_id: str, assignments: list[dict[str, Any]], p: dict[str, str]
     ) -> list[dict[str, Any]]:
         claims = IdentityHandler._admin_authorize(p, "identity.roles.assign")
-        normalized: list[dict[str, Any]] = []
-        for assignment in assignments:
-            code = str(
-                assignment.get("code") or assignment.get("role") or ""
-            ).upper()
-            definition = IdentityHandler._role_definition(code)
-            if not definition:
-                raise ValueError(f"unknown role: {code}")
-            if (
-                code == "GLOBAL_OPERATOR"
-                and claims
-                and "*" not in set(claims.get("scp", []))
-            ):
-                raise PermissionError(
-                    "only a global administrator can assign the global administrator role"
-                )
-            normalized.append(
-                {
-                    "code": code,
-                    "programmeSlug": assignment.get("programmeSlug"),
-                    "jurisdiction": assignment.get("jurisdiction"),
-                    "entityType": assignment.get("entityType"),
-                }
-            )
         current = IdentityHandler._roles(account_id)
+        normalized = IdentityHandler._validate_role_grants(
+            assignments, claims, account_id, current
+        )
         current_global = any(
             item.get("role") == "GLOBAL_OPERATOR" for item in current
         )
@@ -957,8 +1287,77 @@ class IdentityHandler(JsonHandler):
             "identity.roles.replaced.v1",
             {"accountId": account_id, "roles": result},
             account_id,
+            actor_id=claims.get("sub") if claims else None,
         )
         return result
+
+    @staticmethod
+    def _validate_role_grants(
+        assignments: list[dict[str, Any]],
+        claims: dict[str, Any],
+        target_account_id: str,
+        current_assignments: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        if claims and claims.get("sub") == target_account_id:
+            raise PermissionError(
+                "actors cannot change their own role assignments"
+            )
+        normalized: list[dict[str, Any]] = []
+        preserved = Counter(
+            (
+                str(item.get("role", "")).upper(),
+                item.get("programmeSlug"),
+                item.get("jurisdiction"),
+                item.get("entityType"),
+            )
+            for item in current_assignments or []
+        )
+        for assignment in assignments:
+            if not isinstance(assignment, dict):
+                raise ValueError("each role assignment must be an object")
+            code = str(
+                assignment.get("code") or assignment.get("role") or ""
+            ).upper()
+            definition = IdentityHandler._role_definition(code)
+            if not definition:
+                raise ValueError(f"unknown role: {code}")
+            actor_scopes = set(claims.get("scp", [])) if claims else set()
+            target_scopes = set(definition.get("scopes", []))
+            may_grant = IdentityHandler._may_grant_role(
+                actor_scopes, target_scopes
+            )
+            normalized_assignment = {
+                "code": code,
+                "programmeSlug": assignment.get("programmeSlug"),
+                "jurisdiction": assignment.get("jurisdiction"),
+                "entityType": assignment.get("entityType"),
+            }
+            assignment_key = (
+                code,
+                normalized_assignment["programmeSlug"],
+                normalized_assignment["jurisdiction"],
+                normalized_assignment["entityType"],
+            )
+            if not may_grant and preserved[assignment_key] > 0:
+                preserved[assignment_key] -= 1
+            elif claims and not may_grant:
+                raise PermissionError(
+                    "actors may grant only roles strictly below their authority"
+                )
+            normalized.append(normalized_assignment)
+        return normalized
+
+    @staticmethod
+    def _may_grant_role(
+        actor_scopes: set[str], target_scopes: set[str]
+    ) -> bool:
+        # identity.me is a baseline response scope, not role-grant authority.
+        actor_privileges = actor_scopes - {"identity.me"}
+        if "*" in target_scopes:
+            return False
+        if "*" in actor_privileges:
+            return True
+        return target_scopes < actor_privileges
 
     @staticmethod
     def list_security_events(
@@ -1177,13 +1576,16 @@ class IdentityHandler(JsonHandler):
         definition = IdentityHandler._role_definition(code)
         if not definition:
             raise ValueError(f"unknown role: {code}")
-        if (
-            code == "GLOBAL_OPERATOR"
-            and claims
-            and "*" not in set(claims.get("scp", []))
-        ):
+        if claims and claims.get("sub") == p["accountId"]:
+            raise PermissionError("actors cannot assign roles to themselves")
+        actor_scopes = set(claims.get("scp", [])) if claims else set()
+        target_scopes = set(definition.get("scopes", []))
+        may_grant = IdentityHandler._may_grant_role(
+            actor_scopes, target_scopes
+        )
+        if claims and not may_grant:
             raise PermissionError(
-                "only a global operator can assign global operator role"
+                "actors may grant only roles strictly below their authority"
             )
         role = {
             "id": new_id(),
@@ -1198,7 +1600,10 @@ class IdentityHandler(JsonHandler):
         }
         IdentityHandler._bucket("roles")[role["id"]] = role
         IdentityHandler._audit(
-            "identity.role.assigned.v1", role, p["accountId"]
+            "identity.role.assigned.v1",
+            role,
+            p["accountId"],
+            actor_id=claims.get("sub") if claims else None,
         )
         return {**role, "_status": 201}
 
@@ -1231,13 +1636,46 @@ class IdentityHandler(JsonHandler):
         _: JsonHandler, p: dict[str, str]
     ) -> dict[str, Any]:
         body = p["_body"]
-        require(body, "service", "scopes")
-        IdentityHandler._auth(p, scopes=("identity.service.issue",))
+        require(body, "service")
+        if body["service"] == "email-service":
+            require(body, "clientSecret")
+            if set(body) != {"service", "clientSecret"}:
+                raise ValueError(
+                    "email service token requests accept no caller-selected scopes"
+                )
+            expected = os.environ.get("MYOTA_EMAIL_SERVICE_CLIENT_SECRET", "")
+            supplied = body.get("clientSecret")
+            if (
+                len(expected) < 32
+                or not isinstance(supplied, str)
+                or not secrets.compare_digest(
+                    supplied.encode("utf-8"), expected.encode("utf-8")
+                )
+            ):
+                raise PermissionError("service client authentication failed")
+            scopes = ["identity.email.resolve"]
+            claims = {
+                "sub": "service:email-service",
+                "aud": "myota-identity",
+            }
+        else:
+            require(body, "scopes")
+            if "clientSecret" in body:
+                raise ValueError(
+                    "clientSecret is not accepted for this service"
+                )
+            IdentityHandler._auth(p, scopes=("identity.service.issue",))
+            if "identity.email.resolve" in body["scopes"]:
+                raise PermissionError(
+                    "email recipient scope is reserved for email-service"
+                )
+            scopes = body["scopes"]
+            claims = {"sub": f"service:{body['service']}"}
         token = sign_token(
             {
-                "sub": f"service:{body['service']}",
+                **claims,
                 "jti": new_id(),
-                "scp": body["scopes"],
+                "scp": scopes,
                 "iat": epoch(),
                 "exp": epoch() + 300,
                 "tokenType": "service",
@@ -1246,9 +1684,44 @@ class IdentityHandler(JsonHandler):
         )
         IdentityHandler._audit(
             "identity.service-token.issued.v1",
-            {"service": body["service"], "scopes": body["scopes"]},
+            {"service": body["service"], "scopes": scopes},
         )
         return {"accessToken": token, "tokenType": "Bearer", "expiresIn": 300}
+
+    def end_headers(self) -> None:
+        if (
+            self.path.split("?", 1)[0].startswith("/v1/identity/internal/")
+            or self.path.split("?", 1)[0] == "/v1/identity/auth/service-token"
+        ):
+            self.send_header("Cache-Control", "private, no-store")
+        super().end_headers()
+
+    @staticmethod
+    def resolve_email_recipient(
+        _: JsonHandler, p: dict[str, str]
+    ) -> dict[str, Any]:
+        claims = IdentityHandler._auth(p, scopes=("identity.email.resolve",))
+        if (
+            not claims
+            or claims.get("tokenType") != "service"
+            or claims.get("sub") != "service:email-service"
+            or claims.get("aud") != "myota-identity"
+        ):
+            raise PermissionError("email service identity is required")
+        account_id = p.get("accountId", "")
+        try:
+            account_id = str(uuid.UUID(account_id))
+        except (ValueError, AttributeError) as exc:
+            raise KeyError("recipient is unavailable") from exc
+        account = IdentityHandler.store.items.get(account_id)
+        if (
+            not account
+            or account.get("status") != "ACTIVE"
+            or not isinstance(account.get("email"), str)
+            or not account["email"].strip()
+        ):
+            raise KeyError("recipient is unavailable")
+        return {"deliverableAddress": account["email"]}
 
     @staticmethod
     def export_account(_: JsonHandler, p: dict[str, str]) -> dict[str, Any]:
@@ -1276,10 +1749,17 @@ class IdentityHandler(JsonHandler):
         body = p["_body"]
         IdentityHandler._auth(p, account_id=p["accountId"])
         account = IdentityHandler._account(p["accountId"])
+        previous_profile_image = account.get("profileImage")
         account["status"] = "DEACTIVATED"
         if body.get("anonymize", True):
             account.update(
-                {"displayName": "Deactivated account", "email": None}
+                {
+                    "displayName": "Deactivated account",
+                    "email": None,
+                    "websiteUrl": None,
+                    "biographyMarkdown": None,
+                    "profileImage": None,
+                }
             )
         for session in IdentityHandler._bucket("sessions").values():
             if session["accountId"] == account["id"]:
@@ -1293,7 +1773,20 @@ class IdentityHandler(JsonHandler):
             },
             account["id"],
         )
-        return account
+        IdentityHandler.store.persist()
+        if (
+            body.get("anonymize", True)
+            and previous_profile_image
+            and previous_profile_image.get("id")
+        ):
+            try:
+                profile_image_store.delete(
+                    account["id"], previous_profile_image["id"]
+                )
+            except Exception:
+                # The orphan sweep retries failed object deletion after its grace period.
+                pass
+        return IdentityHandler._profile_account(account)
 
 
 def bootstrap_admin() -> None:
@@ -1391,12 +1884,33 @@ IdentityHandler.routes = {
         "POST",
         "/v1/identity/auth/service-token",
     ): IdentityHandler.issue_service_token,
+    (
+        "GET",
+        "/v1/identity/internal/email-recipients/{accountId}",
+    ): IdentityHandler.resolve_email_recipient,
     ("GET", "/v1/identity/me"): IdentityHandler.current_account,
+    ("PATCH", "/v1/identity/me/profile"): IdentityHandler.update_own_profile,
+    (
+        "GET",
+        "/v1/identity/me/profile-image",
+    ): IdentityHandler.read_own_profile_image,
+    (
+        "PUT",
+        "/v1/identity/me/profile-image",
+    ): IdentityHandler.upload_own_profile_image,
+    (
+        "DELETE",
+        "/v1/identity/me/profile-image",
+    ): IdentityHandler.delete_own_profile_image,
     ("GET", "/v1/identity/accounts/{accountId}"): IdentityHandler.get_account,
     (
         "PATCH",
         "/v1/identity/accounts/{accountId}",
     ): IdentityHandler.update_admin_account,
+    (
+        "GET",
+        "/v1/identity/accounts/{accountId}/profile-image",
+    ): IdentityHandler.read_account_profile_image,
     (
         "PATCH",
         "/v1/identity/roles/{roleCode}",

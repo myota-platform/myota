@@ -1,4 +1,5 @@
 {{- range $name, $cfg := .Values.services }}
+{{- if ne $cfg.enabled false }}
 {{- $podResources := default $.Values.resources $cfg.resources }}
 apiVersion: apps/v1
 kind: Deployment
@@ -37,7 +38,10 @@ spec:
               app.kubernetes.io/name: myota
               app.kubernetes.io/component: geodata
       {{- end }}
+      {{- else if eq $name "email" }}
+      terminationGracePeriodSeconds: 75
       {{- end }}
+      {{- if ne $name "email" }}
       initContainers:
         {{- if eq $name "activity" }}
         {{ include "myota.waitForSchema" (dict "root" $ "databaseUrlKey" "activity-database-url") | nindent 8 }}
@@ -46,6 +50,29 @@ spec:
         {{- else }}
         {{ include "myota.waitForSchema" (dict "root" $ "databaseUrlKey" "core-database-url") | nindent 8 }}
         {{- end }}
+        {{- if eq $name "identity" }}
+        - name: ensure-profile-image-bucket
+          image: {{ $.Values.objectStorage.bucketInitImage | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - >-
+              if aws s3api head-bucket
+              --bucket {{ $.Values.objectStorage.profileImageBucket | quote }}
+              --endpoint-url {{ $.Values.objectStorage.endpoint | quote }}
+              --region us-east-1 >/dev/null 2>&1; then exit 0; fi;
+              aws s3api create-bucket
+              --bucket {{ $.Values.objectStorage.profileImageBucket | quote }}
+              --endpoint-url {{ $.Values.objectStorage.endpoint | quote }}
+              --region us-east-1
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.existingSecret }}, key: {{ $.Values.objectStorage.accessKeyKey }}}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.existingSecret }}, key: {{ $.Values.objectStorage.secretKeyKey }}}}
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+        {{- end }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: {{ include "myota.imageReference" (dict "repository" (default $.Values.image.repository $cfg.imageRepository) "tag" (default $.Values.image.tag $cfg.imageTag) "digest" (index $.Values.imageRollout.digests $name)) | quote }}
@@ -59,14 +86,59 @@ spec:
             {{- else if eq $name "geodata" }}
             - name: GEO_DATABASE_URL
               valueFrom: {secretKeyRef: {name: {{ $.Values.postgres.existingSecret }}, key: geo-database-url}}
+            {{- else if eq $name "email" }}
+            - name: EMAIL_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: {{ $cfg.databaseSecret }}, key: {{ $cfg.databaseUrlKey }}}}
             {{- else }}
             - name: CORE_DATABASE_URL
               valueFrom: {secretKeyRef: {name: {{ $.Values.postgres.existingSecret }}, key: core-database-url}}
             {{- end }}
+            {{- if ne $name "email" }}
             - name: MYOTA_REQUIRE_DURABILITY
               value: "1"
+            {{- end }}
             - name: MYOTA_ENV
               value: {{ $.Values.auth.environment | quote }}
+            {{- if eq $name "identity" }}
+            - name: MYOTA_OBJECT_STORAGE_ENDPOINT
+              value: {{ $.Values.objectStorage.endpoint | quote }}
+            - name: MYOTA_PROFILE_IMAGE_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.profileImageExistingSecret }}, key: {{ $.Values.objectStorage.profileImageAccessKeyKey }}}}
+            - name: MYOTA_PROFILE_IMAGE_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: {{ $.Values.objectStorage.profileImageExistingSecret }}, key: {{ $.Values.objectStorage.profileImageSecretKeyKey }}}}
+            - name: MYOTA_PROFILE_IMAGE_BUCKET
+              value: {{ $.Values.objectStorage.profileImageBucket | quote }}
+            {{- if $.Values.services.email.enabled }}
+            - name: MYOTA_EMAIL_SERVICE_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: {{ $.Values.services.email.identitySecret }}, key: {{ $.Values.services.email.identityClientSecretKey }}}}
+            {{- end }}
+            {{- end }}
+            {{- if eq $name "email" }}
+            - name: IDENTITY_INTERNAL_URL
+              value: {{ $cfg.identityInternalUrl | quote }}
+            - name: MYOTA_EMAIL_SERVICE_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: {{ $cfg.identitySecret }}, key: {{ $cfg.identityClientSecretKey }}}}
+            - name: EMAIL_SENDER_ADDRESS
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SENDER_ADDRESS}}
+            - name: EMAIL_SENDER_DISPLAY_NAME
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SENDER_DISPLAY_NAME}}
+            - name: EMAIL_SMTP_HOST
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SMTP_HOST}}
+            - name: EMAIL_SMTP_PORT
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SMTP_PORT}}
+            - name: EMAIL_SMTP_USERNAME
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SMTP_USERNAME}}
+            - name: EMAIL_SMTP_TLS_MODE
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SMTP_TLS_MODE}}
+            - name: EMAIL_SMTP_TIMEOUT_SECONDS
+              valueFrom: {configMapKeyRef: {name: myota-email-config, key: EMAIL_SMTP_TIMEOUT_SECONDS}}
+            - name: EMAIL_SMTP_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $cfg.smtpSecret }}, key: {{ $cfg.smtpPasswordKey }}}}
+            - name: NATS_URL
+              value: {{ $.Values.nats.url | quote }}
+            - name: EMAIL_QUEUE_MAX_MESSAGES
+              value: {{ $.Values.jetstreamProvisioner.capacity.emailWorkMaxMessages | quote }}
+            {{- end }}
             {{- if eq $name "geodata" }}
             - name: MYOTA_ACTIVITY_URL
               value: {{ $.Values.services.activity.internalUrl | quote }}
@@ -77,8 +149,10 @@ spec:
               value: "YES"
             {{- end }}
             {{- end }}
+            {{- if ne $name "email" }}
             - name: MYOTA_AUTH_SIGNING_KEY
               valueFrom: {secretKeyRef: {name: {{ $.Values.auth.existingSecret }}, key: signing-key}}
+            {{- end }}
             {{- if $.Values.observability.enabled }}
             - name: MYOTA_OTEL_ENABLED
               value: "1"
@@ -186,12 +260,16 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
+          {{- else if eq $name "email" }}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
           {{- else }}
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
           {{- end }}
           resources: {{- toYaml $podResources | nindent 12 }}
 ---
+{{- end }}
 {{- end }}
 {{- if .Values.activityWorkers.enabled }}
 ---

@@ -15,6 +15,7 @@ import threading
 import tempfile
 import time
 import uuid
+from dataclasses import dataclass
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -33,6 +34,7 @@ from myota_logging import log_http_completed, start_http_span
 MAX_BODY_BYTES = int(
     os.environ.get("MYOTA_MAX_BODY_BYTES", str(1024 * 1024 * 1024))
 )
+MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024
 
 _CORRELATION_ID: ContextVar[str | None] = ContextVar(
     "myota_correlation_id", default=None
@@ -416,6 +418,34 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return value
 
 
+class RequestTooLarge(ValueError):
+    status_code = 413
+
+
+def read_bounded_bytes(
+    handler: BaseHTTPRequestHandler, max_bytes: int
+) -> bytes:
+    try:
+        length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError as exc:
+        raise ValueError("invalid Content-Length") from exc
+    if length <= 0:
+        raise ValueError("request body is required")
+    if length > max_bytes:
+        raise RequestTooLarge("profile image upload exceeds 5 MiB")
+    value = handler.rfile.read(length)
+    if len(value) != length:
+        raise ValueError("request body is incomplete")
+    return value
+
+
+@dataclass(frozen=True)
+class BinaryResponse:
+    status: int
+    content_type: str
+    body: bytes
+
+
 def read_multipart(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     """Read metadata and spool a binary file without converting it to Base64."""
     length = _request_length(handler)
@@ -675,6 +705,60 @@ class JsonHandler(BaseHTTPRequestHandler):
             }:
                 raise
 
+    def _send_bytes(self, status: int, content_type: str, body: bytes) -> None:
+        self._log_http_completed(status)
+        route = getattr(self, "current_route", None)
+        route_name = (
+            route[1]
+            if route
+            else getattr(self, "path", "unknown").split("?", 1)[0]
+        )
+        METRICS.inc(
+            "myota_http_requests_total",
+            {
+                "service": self.service,
+                "method": getattr(self, "command", "UNKNOWN"),
+                "route": route_name,
+                "status": status,
+            },
+        )
+        request_telemetry = getattr(self, "_otel_request", None)
+        if request_telemetry:
+            request_telemetry.finish(status, route_name)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "private, no-store")
+            self.send_header("X-Request-ID", self.request_id)
+            self.send_header("X-Correlation-ID", self.correlation_id)
+            if self._http_span and self._http_span.trace_id:
+                self.send_header("X-Trace-ID", self._http_span.trace_id)
+            self.send_header(
+                "Access-Control-Expose-Headers",
+                "X-Request-ID, X-Correlation-ID, traceparent, tracestate, X-Trace-ID",
+            )
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Authorization, Idempotency-Key, If-Match, X-Request-ID, X-Correlation-ID",
+            )
+            self.send_header(
+                "Access-Control-Allow-Methods",
+                "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            )
+            self.send_header("API-Version", "v1")
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+        except OSError as exc:
+            if exc.errno not in {
+                errno.EPIPE,
+                errno.ECONNRESET,
+                errno.ESHUTDOWN,
+            }:
+                raise
+
     def _error(self, status: int, code: str, detail: str) -> None:
         self._send(
             status,
@@ -799,7 +883,13 @@ class JsonHandler(BaseHTTPRequestHandler):
             if matched:
                 try:
                     self.current_route = (method, pattern)
-                    if method in {"POST", "PUT", "PATCH", "DELETE"}:
+                    raw_body = None
+                    if method == "PUT" and pattern.endswith("/profile-image"):
+                        raw_body = read_bounded_bytes(
+                            self, MAX_PROFILE_IMAGE_BYTES
+                        )
+                        body = {}
+                    elif method in {"POST", "PUT", "PATCH", "DELETE"}:
                         content_type = self.headers.get("Content-Type", "")
                         if hasattr(self, "read_request_body"):
                             body = self.read_request_body()
@@ -828,7 +918,11 @@ class JsonHandler(BaseHTTPRequestHandler):
                             {
                                 **params,
                                 "_body": body,
+                                "_raw_body": raw_body,
                                 "_path": self.path,
+                                "Content-Type": self.headers.get(
+                                    "Content-Type", ""
+                                ),
                                 "Idempotency-Key": self.headers.get(
                                     "Idempotency-Key"
                                 ),
@@ -853,7 +947,14 @@ class JsonHandler(BaseHTTPRequestHandler):
                     )
                     if method in {"POST", "PUT", "PATCH", "DELETE"}:
                         self.store.persist()
-                    self._send(status, result)
+                    if isinstance(result, BinaryResponse):
+                        self._send_bytes(
+                            result.status,
+                            result.content_type,
+                            result.body,
+                        )
+                    else:
+                        self._send(status, result)
                 except ValueError as exc:
                     status = getattr(exc, "status_code", 400)
                     code = "conflict" if status == 409 else "invalid_request"

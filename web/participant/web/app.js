@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const profileUtils = window.MyotaProfileUtils;
 let programmes = [];
 let entities = [];
 let publicAwards = [];
@@ -41,4 +42,222 @@ async function loadPublicAwards(slug){try{const data=await awardApi(`/v1/awards?
 function renderPublicAwards(){if(!publicAwards.length){$('public-awards').innerHTML='<p class="small">This programme has not published any awards yet.</p>';return;}$('public-awards').innerHTML=publicAwards.map(award=>`<article class="public-award"><div><h4>${escapeHtml(award.name)}</h4><p class="small">${escapeHtml(award.description||'')} · ${escapeHtml(award.category)} · ${escapeHtml(award.achievementMetric)}</p></div><div class="award-levels">${(award.levels||[]).map(level=>`<button class="award-level" data-award-id="${escapeHtml(award.id)}" data-level-id="${escapeHtml(level.id)}">${escapeHtml(level.name||level.label||level.id)} · ${escapeHtml(level.threshold)}</button>`).join('')}</div></article>`).join('');document.querySelectorAll('[data-award-id]').forEach(button=>button.onclick=()=>requestPublicAward(button.dataset.awardId,button.dataset.levelId));}
 async function signInForAward(){if(awardAccount&&awardAccessToken)return awardAccount;const data=await api('/v1/identity/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('award-email').value,password:$('award-password').value})});awardAccessToken=data.accessToken;awardAccount=data.account;localStorage.setItem('myota_public_access',awardAccessToken);return awardAccount;}
 async function requestPublicAward(awardId,levelId){try{$('award-status').textContent='Checking your progress…';const account=await signInForAward();const progress=await awardApi(`/v1/awards/progress?awardId=${encodeURIComponent(awardId)}&participantId=${encodeURIComponent(account.id)}`);const level=(progress.levels||[]).find(item=>item.id===levelId);if(!level?.eligible)throw new Error(`This level is not eligible yet. Current progress: ${progress.progress}.`);const callsign=account.callsigns?.find(item=>item.id===account.primaryCallsignId)?.value||account.callsigns?.[0]?.value||'SWL';const request=await awardApi('/v1/awards/requests',{method:'POST',body:JSON.stringify({awardId,levelId,subjectId:account.id,callsign,personName:account.displayName})});$('award-request-status').textContent=request.status==='REQUESTED'?'Award request submitted for programme review.':'This award level is already requested or issued.';$('award-status').textContent='';}catch(error){$('award-status').textContent=error.message;}}
-$('award-login').onsubmit=event=>{event.preventDefault();signInForAward().then(()=>{$('award-request-status').textContent='Signed in. Choose an eligible award level to request it.';}).catch(error=>{$('award-status').textContent=error.message;});};
+$('award-login').onsubmit=event=>{event.preventDefault();signInForAward().then(async()=>{$('award-request-status').textContent='Signed in. Choose an eligible award level to request it.';await loadProfile();}).catch(error=>{$('award-status').textContent=error.message;});};
+
+let profileCrop = null;
+let profileSourceUrl = null;
+let profileDisplayUrl = null;
+const profileCanvas = $('profile-crop-canvas');
+const profileContext = profileCanvas.getContext('2d');
+
+async function profileApi(path, options = {}, asBlob = false) {
+  const headers = {Accept: asBlob ? 'image/webp' : 'application/json', ...(options.headers || {})};
+  if (awardAccessToken) headers.Authorization = `Bearer ${awardAccessToken}`;
+  const response = await fetch(path, {...options, headers});
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.message || body.detail || `Request failed (${response.status})`);
+  }
+  return asBlob ? response.blob() : response.json();
+}
+
+function revokeProfileSource() {
+  if (profileSourceUrl) URL.revokeObjectURL(profileSourceUrl);
+  profileSourceUrl = null;
+  profileCrop = null;
+}
+
+function showProfileImage(blob) {
+  if (profileDisplayUrl) URL.revokeObjectURL(profileDisplayUrl);
+  profileDisplayUrl = URL.createObjectURL(blob);
+  $('profile-image-current').src = profileDisplayUrl;
+  $('profile-image-current').hidden = false;
+  $('profile-image-delete').hidden = false;
+}
+
+function clearProfileImage() {
+  if (profileDisplayUrl) URL.revokeObjectURL(profileDisplayUrl);
+  profileDisplayUrl = null;
+  $('profile-image-current').removeAttribute('src');
+  $('profile-image-current').hidden = true;
+  $('profile-image-delete').hidden = true;
+}
+
+async function loadProfile() {
+  if (!awardAccessToken) {
+    $('profile-form').hidden = true;
+    $('profile-image-editor').hidden = true;
+    revokeProfileSource();
+    clearProfileImage();
+    $('profile-status').textContent = 'Sign in below to manage your profile.';
+    return;
+  }
+  try {
+    const account = await profileApi('/v1/identity/me');
+    awardAccount = account;
+    $('profile-form').hidden = false;
+    $('profile-image-editor').hidden = false;
+    $('profile-website').value = account.websiteUrl || '';
+    $('profile-biography').value = account.biographyMarkdown || '';
+    $('profile-biography-preview').innerHTML = profileUtils.renderSafeMarkdown(account.biographyMarkdown || '');
+    if (account.profileImage) {
+      const image = await profileApi('/v1/identity/me/profile-image', {}, true);
+      showProfileImage(image);
+    } else {
+      clearProfileImage();
+    }
+    $('profile-status').textContent = 'Profile loaded.';
+  } catch (error) {
+    $('profile-status').textContent = error.message;
+    $('profile-form').hidden = true;
+    $('profile-image-editor').hidden = true;
+    revokeProfileSource();
+    clearProfileImage();
+    if (/401|403|authentication|token/i.test(error.message)) {
+      awardAccessToken = '';
+      awardAccount = null;
+      localStorage.removeItem('myota_public_access');
+    }
+  }
+}
+
+$('profile-biography').addEventListener('input', (event) => {
+  $('profile-biography-preview').innerHTML = profileUtils.renderSafeMarkdown(event.target.value);
+});
+
+$('profile-form').onsubmit = async (event) => {
+  event.preventDefault();
+  $('profile-status').textContent = 'Saving profile…';
+  try {
+    await profileApi('/v1/identity/me/profile', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        websiteUrl: $('profile-website').value.trim() || null,
+        biographyMarkdown: $('profile-biography').value || null,
+      }),
+    });
+    $('profile-status').textContent = 'Profile saved.';
+  } catch (error) {
+    $('profile-status').textContent = error.message;
+  }
+};
+
+function drawProfileCrop() {
+  if (!profileCrop) return;
+  const size = profileCanvas.width;
+  const crop = profileUtils.cropGeometry(
+    profileCrop.image.naturalWidth,
+    profileCrop.image.naturalHeight,
+    size,
+    profileCrop.zoom,
+    profileCrop.panX,
+    profileCrop.panY,
+  );
+  profileCrop.panX = crop.panX;
+  profileCrop.panY = crop.panY;
+  profileContext.clearRect(0, 0, size, size);
+  profileContext.drawImage(profileCrop.image, crop.x, crop.y, crop.width, crop.height);
+}
+
+$('profile-image-file').onchange = () => {
+  const file = $('profile-image-file').files[0];
+  if (!file) return;
+  revokeProfileSource();
+  $('profile-crop-tools').hidden = true;
+  const sourceUrl = URL.createObjectURL(file);
+  profileSourceUrl = sourceUrl;
+  const image = new Image();
+  image.onload = () => {
+    try {
+      profileUtils.validateProfileImage(file, image.naturalWidth, image.naturalHeight);
+      profileCrop = {image, zoom: 1, panX: 0, panY: 0};
+      $('profile-crop-zoom').value = '100';
+      $('profile-crop-tools').hidden = false;
+      drawProfileCrop();
+      $('profile-status').textContent = 'Adjust the crop preview before saving.';
+    } catch (error) {
+      revokeProfileSource();
+      $('profile-image-file').value = '';
+      $('profile-status').textContent = error.message;
+    }
+  };
+  image.onerror = () => {
+    revokeProfileSource();
+    $('profile-status').textContent = 'The selected image could not be decoded.';
+  };
+  image.src = sourceUrl;
+};
+
+$('profile-crop-zoom').oninput = (event) => {
+  if (!profileCrop) return;
+  profileCrop.zoom = Number(event.target.value) / 100;
+  drawProfileCrop();
+};
+
+document.querySelectorAll('[data-crop-pan]').forEach((button) => {
+  button.onclick = () => {
+    if (!profileCrop) return;
+    const offsets = {up: [0, -20], down: [0, 20], left: [-20, 0], right: [20, 0]};
+    const [x, y] = offsets[button.dataset.cropPan];
+    profileCrop.panX += x;
+    profileCrop.panY += y;
+    drawProfileCrop();
+  };
+});
+
+function canvasBlob(canvas, quality) {
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not prepare the profile picture.')), 'image/webp', quality));
+}
+
+$('profile-image-upload').onclick = async () => {
+  if (!profileCrop) return;
+  $('profile-status').textContent = 'Preparing profile picture…';
+  try {
+    const output = document.createElement('canvas');
+    output.width = 512;
+    output.height = 512;
+    const context = output.getContext('2d');
+    const previewScale = output.width / profileCanvas.width;
+    const crop = profileUtils.cropGeometry(
+      profileCrop.image.naturalWidth,
+      profileCrop.image.naturalHeight,
+      output.width,
+      profileCrop.zoom,
+      profileCrop.panX * previewScale,
+      profileCrop.panY * previewScale,
+    );
+    context.drawImage(profileCrop.image, crop.x, crop.y, crop.width, crop.height);
+    let blob;
+    for (const quality of [0.9, 0.8, 0.7, 0.6]) {
+      blob = await canvasBlob(output, quality);
+      if (blob.size <= 256 * 1024) break;
+    }
+    if (blob.size > 256 * 1024) throw new Error('The normalized picture exceeds 256 KiB. Choose a simpler image.');
+    await profileApi('/v1/identity/me/profile-image', {
+      method: 'PUT',
+      headers: {'Content-Type': 'image/webp'},
+      body: blob,
+    });
+    revokeProfileSource();
+    $('profile-image-file').value = '';
+    $('profile-crop-tools').hidden = true;
+    showProfileImage(blob);
+    $('profile-status').textContent = 'Profile picture saved.';
+  } catch (error) {
+    $('profile-status').textContent = error.message;
+  }
+};
+
+$('profile-image-delete').onclick = async () => {
+  $('profile-status').textContent = 'Removing profile picture…';
+  try {
+    await profileApi('/v1/identity/me/profile-image', {method: 'DELETE'});
+    clearProfileImage();
+    $('profile-status').textContent = 'Profile picture removed.';
+  } catch (error) {
+    $('profile-status').textContent = error.message;
+  }
+};
+
+loadProfile();

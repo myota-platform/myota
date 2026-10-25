@@ -53,6 +53,26 @@ export class MyOTAClient {
     return this.request<T>(`/v1/identity/accounts/${encodeURIComponent(accountId)}`, { method: 'PATCH', body, headers: { 'Idempotency-Key': crypto.randomUUID() } });
   }
 
+  patchIdentityProfile<T = unknown>(body: unknown): Promise<T> {
+    return this.request<T>('/v1/identity/me/profile', { method: 'PATCH', body });
+  }
+
+  getIdentityProfileImage<T = Blob>(): Promise<T> {
+    return this.request<T>('/v1/identity/me/profile-image', { headers: { Accept: 'image/webp' } });
+  }
+
+  putIdentityProfileImage<T = unknown>(image: Blob): Promise<T> {
+    return this.request<T>('/v1/identity/me/profile-image', { method: 'PUT', body: image, headers: { 'Content-Type': image.type } });
+  }
+
+  deleteIdentityProfileImage<T = unknown>(): Promise<T> {
+    return this.request<T>('/v1/identity/me/profile-image', { method: 'DELETE' });
+  }
+
+  getAccountProfileImage<T = Blob>(accountId: string): Promise<T> {
+    return this.request<T>(`/v1/identity/accounts/${encodeURIComponent(accountId)}/profile-image`, { headers: { Accept: 'image/webp' } });
+  }
+
   createIdentityRole<T = unknown>(body: unknown): Promise<T> {
     return this.request<T>('/v1/identity/roles', { method: 'POST', body, headers: { 'Idempotency-Key': crypto.randomUUID() } });
   }

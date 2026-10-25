@@ -6,10 +6,10 @@
     "myota",
     "outbox"
   ],
-  "timezone": "browser",
+  "timezone": "utc",
   "schemaVersion": 39,
   "version": 1,
-  "refresh": "15s",
+  "refresh": "30s",
   "panels": [
     {
       "id": 1,
@@ -123,5 +123,10 @@
         }
       ]
     }
-  ]
+  ],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "editable": false
 }

@@ -1,0 +1,74 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "myota-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [{"datasource": {"type": "prometheus", "uid": "myota-prometheus"}, "editorMode": "code", "expr": "myota_email_queue_pending_messages{job=\"myota-email\"}", "refId": "A"}],
+      "title": "Email work pending",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "myota-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "targets": [{"datasource": {"type": "prometheus", "uid": "myota-prometheus"}, "editorMode": "code", "expr": "myota_email_queue_oldest_message_age_seconds{job=\"myota-email\"}", "refId": "A"}],
+      "title": "Oldest pending command",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "myota-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "targets": [{"datasource": {"type": "prometheus", "uid": "myota-prometheus"}, "editorMode": "code", "expr": "myota_email_smtp_last_delivery_available{job=\"myota-email\"}", "refId": "A"}],
+      "title": "Last SMTP transaction (1=success)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "myota-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "targets": [{"datasource": {"type": "prometheus", "uid": "myota-prometheus"}, "editorMode": "code", "expr": "sum(increase(myota_email_delivery_attempts_total{job=\"myota-email\",outcome=\"dead_letter\"}[1h]))", "refId": "A"}],
+      "title": "Dead letters in the last hour",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "myota-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5},
+      "id": 5,
+      "targets": [{"datasource": {"type": "prometheus", "uid": "myota-prometheus"}, "editorMode": "code", "expr": "sum by (outcome) (rate(myota_email_delivery_attempts_total{job=\"myota-email\"}[5m]))", "legendFormat": "{{outcome}}", "refId": "A"}],
+      "title": "Delivery outcomes per second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "myota-prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5},
+      "id": 6,
+      "targets": [{"datasource": {"type": "prometheus", "uid": "myota-prometheus"}, "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(myota_email_smtp_delivery_duration_seconds_bucket{job=\"myota-email\"}[5m])))", "legendFormat": "SMTP p95", "refId": "A"}],
+      "title": "SMTP delivery latency p95",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["myota", "email", "operations"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "MyOTA Email Delivery",
+  "uid": "myota-email-delivery",
+  "version": 1
+}

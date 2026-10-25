@@ -131,4 +131,104 @@ spec:
             storage: {{ $config.storage | quote }}
 ---
 {{- end }}
+{{- if $.Values.services.email.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myota-email-postgres
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: email-database
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: email-database
+  ports:
+    - {name: postgresql, port: 5432, targetPort: postgresql}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: myota-email-postgres
+  labels:
+    app.kubernetes.io/name: myota
+    app.kubernetes.io/component: email-database
+spec:
+  serviceName: myota-email-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myota
+      app.kubernetes.io/component: email-database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myota
+        app.kubernetes.io/component: email-database
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgres.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: POSTGRES_DB, value: myota_email}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.services.email.postgresExistingSecret }}
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.services.email.postgresExistingSecret }}
+                  key: password
+            - name: MYOTA_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.services.email.postgresExistingSecret }}
+                  key: app-password
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {name: postgresql, containerPort: 5432}
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d myota_email"]
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d myota_email"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d myota_email"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d/020-create-app-role.sh
+              subPath: 020-create-app-role.sh
+          resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
+      volumes:
+        - name: initdb
+          configMap:
+            name: myota-postgres-init
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.postgres.storageClassName }}
+        storageClassName: {{ .Values.postgres.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.services.email.storageSize | quote }}
+{{- end }}
 {{- end }}

@@ -2,10 +2,23 @@ import json
 import unittest
 from unittest.mock import patch
 
-from services.dev_server import grafana_auth_response
+from services.dev_server import grafana_auth_response, is_public_gateway_path
 
 
 class GrafanaGatewayAuthTests(unittest.TestCase):
+    def test_internal_identity_routes_are_not_forwarded_by_gateway(self):
+        self.assertFalse(
+            is_public_gateway_path(
+                "/v1/identity/internal/email-recipients/account-id?x=1"
+            )
+        )
+        self.assertTrue(
+            is_public_gateway_path("/v1/identity/accounts/account-id")
+        )
+        self.assertTrue(
+            is_public_gateway_path("/v1/identity/internalish/resource")
+        )
+
     def test_requires_bearer_without_calling_identity(self):
         with patch("services.dev_server.urllib.request.urlopen") as urlopen:
             status, body, headers = grafana_auth_response("")

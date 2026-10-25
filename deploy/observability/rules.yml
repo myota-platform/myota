@@ -324,3 +324,45 @@ groups:
           summary: A geodata import has a stale processing heartbeat
           runbook_url: "https://github.com/myota-platform/myota-docs/blob/main/docs/observability/logging-runbook.md#alert-response"
           description: A processing import heartbeat is older than the default lease interval; inspect and recover the run.
+      - alert: MyOTAEmailQueueOldestCommandAge
+        expr: myota_email_queue_oldest_message_age_seconds{job="myota-email"} > 3600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: An email command has waited over one hour
+          runbook_url: "https://github.com/myota-platform/myota-docs/blob/main/docs/observability/logging-runbook.md#alert-response"
+          description: Inspect worker readiness, Identity recipient resolution, SMTP availability, and the producer outbox recovery path.
+      - alert: MyOTAEmailQueueNearCapacity
+        expr: |
+          myota_email_queue_pending_messages{job="myota-email"}
+          / clamp_min(myota_email_queue_max_messages{job="myota-email"}, 1) > 0.8
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: The email queue is above 80 percent of its configured message bound
+          runbook_url: "https://github.com/myota-platform/myota-docs/blob/main/docs/observability/logging-runbook.md#alert-response"
+          description: Review the bounded queue, worker capacity, SMTP health, and producer outbox backlog.
+      - alert: MyOTAEmailDeadLettersIncreasing
+        expr: sum(increase(myota_email_delivery_attempts_total{job="myota-email",outcome="dead_letter"}[15m])) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Email deliveries were dead-lettered
+          runbook_url: "https://github.com/myota-platform/myota-docs/blob/main/docs/observability/logging-runbook.md#alert-response"
+          description: Review redacted dead-letter error codes, then use the authorized producer-outbox recovery procedure where appropriate.
+      - alert: MyOTAEmailSMTPUnavailable
+        expr: myota_email_smtp_last_delivery_available{job="myota-email"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: The last observed SMTP transaction failed or has not succeeded yet
+          runbook_url: "https://github.com/myota-platform/myota-docs/blob/main/docs/observability/logging-runbook.md#alert-response"
+          description: Check test SMTP host reachability, TLS mode, account configuration, credentials, and provider status. This gauge reflects the last delivery transaction, not an active synthetic probe.
+      - alert: MyOTAEmailSMTPLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(myota_email_smtp_delivery_duration_seconds_bucket{job="myota-email"}[5m]))) > 5
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: SMTP delivery p95 latency is above five seconds
+          runbook_url: "https://github.com/myota-platform/myota-docs/blob/main/docs/observability/logging-runbook.md#alert-response"
+          description: Review provider latency and the configured bounded SMTP timeout.

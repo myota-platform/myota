@@ -16,9 +16,10 @@ submission, review, and publication. These remain explicit because they
 represent audited domain transitions.
 
 The event registry and JSON Schemas in `contracts/event-registry.json` and
-`contracts/schemas/` are authoritative here. Platform mirrors are generated
-from these files. The registry now contains 67 source-backed domain facts:
-19 Identity, 12 Programme, 10 Activity, and 26 Geodata facts. The unsupported
+`contracts/schemas/` are authoritative here. Deploy's runtime routing catalog
+is generated from these files. The registry contains 68 source-backed domain
+facts: 19 Identity, 12 Programme, 10 Activity, and 27 Geodata facts, plus 11
+selected work commands. The unsupported
 Geodata deletion-failure fact was removed because the worker retries from its
 durable lease and emits no terminal failure event. Fact payload schemas remain
 source-derived inventories; runtime enforcement still requires the documented
@@ -27,6 +28,15 @@ projection, prohibited-field, size, compatibility, and consumer checks.
 Geodata preprocessing still carries internal `_records` and `_status` in
 its source-derived event shape. Introduce and review a minimal versioned
 projection before enforcement. The Operations Service is retired; it owned no domain-fact producer or payload schema.
+
+The `email.send.v1` work command uses an Identity account reference and a
+versioned allowlisted account-created template. The email consumer validates
+against the canonical checked-in schema and excludes email addresses, message
+bodies, credentials, recovery tokens, and arbitrary HTML. Identity owns the
+durable producer outbox; Deploy bounds the JetStream recovery window, after
+which operators republish the same stable `workId` from that outbox. The
+transactional Identity producer and Helm Testing qualification remain separate
+gates tracked by the email workstream.
 
 Geodata entity categories use the shared master-data catalogue. `entityTypes`
 is the ordered category set, and the first category is the compatibility

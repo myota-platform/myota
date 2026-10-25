@@ -31,6 +31,10 @@ CAPACITY = {
     "NATS_GEODATA_WORK_MAX_BYTES": "1048576",
     "NATS_GEODATA_WORK_MAX_MESSAGES": "1000",
     "NATS_GEODATA_WORK_MAX_MESSAGE_BYTES": "65536",
+    "NATS_EMAIL_WORK_MAX_AGE_SECONDS": "604800",
+    "NATS_EMAIL_WORK_MAX_BYTES": "67108864",
+    "NATS_EMAIL_WORK_MAX_MESSAGES": "8192",
+    "NATS_EMAIL_WORK_MAX_MESSAGE_BYTES": "8192",
 }
 
 
@@ -170,6 +174,40 @@ class JetStreamTopologyTests(unittest.TestCase):
             [stream.name for stream in streams], ["MYOTA_GEODATA_WORK"]
         )
         self.assertEqual(len(consumers), 4)
+
+    def test_email_work_scope_is_finite_and_uses_exact_registered_subject(self):
+        email_capacity = {
+            key: value
+            for key, value in CAPACITY.items()
+            if key.startswith("NATS_EMAIL_WORK_")
+        }
+        with patch.dict(os.environ, email_capacity, clear=True):
+            streams, consumers = desired_topology("email-work")
+        self.assertEqual(len(streams), 1)
+        self.assertEqual(streams[0].name, "MYOTA_EMAIL_WORK")
+        self.assertEqual(streams[0].subjects, ("myota.work.email.send.v1",))
+        self.assertEqual(streams[0].retention, "workqueue")
+        self.assertEqual(streams[0].max_age_seconds, 604800)
+        self.assertEqual(streams[0].max_bytes, 67108864)
+        self.assertEqual(streams[0].max_messages, 8192)
+        self.assertEqual(streams[0].max_message_bytes, 8192)
+        self.assertEqual(len(consumers), 1)
+        self.assertEqual(consumers[0].durable, "email-delivery-v1")
+        self.assertEqual(consumers[0].filter_subject, "myota.work.email.send.v1")
+        self.assertEqual(consumers[0].ack_wait_seconds, 90)
+        self.assertEqual(consumers[0].max_deliveries, 8)
+        self.assertEqual(consumers[0].max_ack_pending, 1)
+        self.assertEqual(consumers[0].max_waiting, 1)
+
+    def test_email_work_scope_from_environment_needs_explicit_opt_in(self):
+        email_capacity = {
+            key: value
+            for key, value in CAPACITY.items()
+            if key.startswith("NATS_EMAIL_WORK_")
+        }
+        with patch.dict(os.environ, email_capacity, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "NATS_TOPOLOGY_APPLY"):
+                topology_from_environment()
 
     def test_consumer_drift_checks_delivery_and_replay_safety_settings(self):
         with patch.dict(os.environ, CAPACITY, clear=True):

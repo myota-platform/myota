@@ -1,0 +1,12 @@
+{
+  "name": "myota-participant-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DOM-level tests for the static MyOTA participant web client.",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

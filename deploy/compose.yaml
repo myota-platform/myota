@@ -44,6 +44,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  email-db:
+    image: postgres:16-alpine
+    profiles: [email]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${EMAIL_POSTGRES_USER:-myota_email}
+      POSTGRES_PASSWORD_FILE: /run/secrets/email-postgres-password
+      POSTGRES_DB: myota_email
+    secrets: [email-postgres-password]
+    volumes: [email-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d myota_email"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
   migrations:
     image: postgis/postgis:16-3.4
     command: ["/bin/bash", "/migrations/run.sh"]
@@ -65,7 +80,7 @@ services:
       activity-db: {condition: service_healthy}
       geo-db: {condition: service_healthy}
   identity:
-    build: .
+    build: ../apps/identity
     restart: unless-stopped
     env_file: [.env]
     environment:
@@ -75,24 +90,36 @@ services:
       MYOTA_ENV: development
       MYOTA_AUTH_SIGNING_KEY: myota-local-development-signing-key
       MYOTA_EXPOSE_DEV_TOKENS: "1"
+      MYOTA_OBJECT_STORAGE_ENDPOINT: ${MYOTA_OBJECT_STORAGE_ENDPOINT:-http://seaweedfs:8333}
+      MYOTA_PROFILE_IMAGE_ACCESS_KEY: ${MYOTA_PROFILE_IMAGE_ACCESS_KEY:-myota-profile-image}
+      MYOTA_PROFILE_IMAGE_SECRET_KEY: ${MYOTA_PROFILE_IMAGE_SECRET_KEY:-myota-profile-image-dev-only}
+      MYOTA_PROFILE_IMAGE_BUCKET: myota-user-profile-images
       MYOTA_OTEL_ENABLED: "1"
       OTEL_SERVICE_NAME: myota-identity
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-    depends_on: {migrations: {condition: service_completed_successfully}}
+    depends_on:
+      migrations: {condition: service_completed_successfully}
+      profile-image-bucket-init: {condition: service_completed_successfully}
     ports: ["8001:8001"]
   identity-maintenance:
-    build: .
+    build: ../apps/identity
     restart: unless-stopped
-    command: ["python3", "services/identity_maintenance.py"]
+    command: ["python3", "identity_maintenance.py"]
     environment:
       CORE_DATABASE_URL: postgresql://myota:myota-dev-only@core-db:5432/myota_core
       MYOTA_REQUIRE_DURABILITY: "1"
       MYOTA_AUTH_SIGNING_KEY: myota-local-development-signing-key
+      MYOTA_OBJECT_STORAGE_ENDPOINT: ${MYOTA_OBJECT_STORAGE_ENDPOINT:-http://seaweedfs:8333}
+      MYOTA_PROFILE_IMAGE_ACCESS_KEY: ${MYOTA_PROFILE_IMAGE_ACCESS_KEY:-myota-profile-image}
+      MYOTA_PROFILE_IMAGE_SECRET_KEY: ${MYOTA_PROFILE_IMAGE_SECRET_KEY:-myota-profile-image-dev-only}
+      MYOTA_PROFILE_IMAGE_BUCKET: myota-user-profile-images
       MYOTA_OTEL_ENABLED: "1"
-      OTEL_SERVICE_NAME: myota-programmes
+      OTEL_SERVICE_NAME: myota-identity
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       MYOTA_IDENTITY_MAINTENANCE_SECONDS: "3600"
-    depends_on: {migrations: {condition: service_completed_successfully}}
+    depends_on:
+      migrations: {condition: service_completed_successfully}
+      profile-image-bucket-init: {condition: service_completed_successfully}
   programmes:
     build: .
     restart: unless-stopped
@@ -131,6 +158,7 @@ services:
       MYOTA_GEODATA_IMPORT_BUCKET: myota-geodata-imports
       GEODATA_IMPORT_RETENTION_DAYS: "30"
       NATS_URL: nats://nats:4222
+      EMAIL_QUEUE_MAX_MESSAGES: "${NATS_EMAIL_WORK_MAX_MESSAGES:-0}"
       MYOTA_OTEL_ENABLED: "1"
       OTEL_SERVICE_NAME: myota-geodata
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
@@ -297,14 +325,64 @@ services:
       NATS_GEODATA_WORK_MAX_MESSAGES: "${NATS_GEODATA_WORK_MAX_MESSAGES:-}"
       NATS_GEODATA_WORK_MAX_MESSAGE_BYTES: "${NATS_GEODATA_WORK_MAX_MESSAGE_BYTES:-}"
     depends_on: [nats]
+  email-nats-provisioner:
+    profiles: [email]
+    build: .
+    restart: "no"
+    command: ["python3", "services/provision_jetstream.py"]
+    environment:
+      NATS_URL: nats://nats:4222
+      NATS_TOPOLOGY_APPLY: "${NATS_TOPOLOGY_APPLY:-0}"
+      NATS_TOPOLOGY_SCOPE: email-work
+      NATS_EMAIL_WORK_MAX_AGE_SECONDS: "${NATS_EMAIL_WORK_MAX_AGE_SECONDS:-}"
+      NATS_EMAIL_WORK_MAX_BYTES: "${NATS_EMAIL_WORK_MAX_BYTES:-}"
+      NATS_EMAIL_WORK_MAX_MESSAGES: "${NATS_EMAIL_WORK_MAX_MESSAGES:-}"
+      NATS_EMAIL_WORK_MAX_MESSAGE_BYTES: "${NATS_EMAIL_WORK_MAX_MESSAGE_BYTES:-}"
+    depends_on: [nats]
+  email:
+    profiles: [email]
+    build: ../apps/email
+    image: ghcr.io/myota-platform/myota-email-service:testing
+    restart: unless-stopped
+    environment:
+      EMAIL_DATABASE_URL_FILE: /run/secrets/email-database-url
+      IDENTITY_INTERNAL_URL: http://identity:8001
+      MYOTA_EMAIL_SERVICE_CLIENT_SECRET_FILE: /run/secrets/email-identity-client-secret
+      EMAIL_SENDER_ADDRESS: ${EMAIL_SENDER_ADDRESS:?set a non-production sender address}
+      EMAIL_SENDER_DISPLAY_NAME: ${EMAIL_SENDER_DISPLAY_NAME:-MyOTA}
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:?set a non-production SMTP host}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+      EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:?set a non-production SMTP username}
+      EMAIL_SMTP_PASSWORD_FILE: /run/secrets/email-smtp-password
+      EMAIL_SMTP_TLS_MODE: ${EMAIL_SMTP_TLS_MODE:-starttls}
+      EMAIL_SMTP_TIMEOUT_SECONDS: ${EMAIL_SMTP_TIMEOUT_SECONDS:-10}
+      NATS_URL: nats://nats:4222
+      MYOTA_OTEL_ENABLED: "1"
+      MYOTA_ENV: development
+      OTEL_SERVICE_NAME: myota-email-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    secrets:
+      - email-database-url
+      - email-identity-client-secret
+      - email-smtp-password
+    depends_on:
+      email-db: {condition: service_healthy}
+      identity: {condition: service_started}
+      nats: {condition: service_started}
+      email-nats-provisioner: {condition: service_completed_successfully}
+    expose: ["9108"]
   seaweedfs:
     image: chrislusf/seaweedfs:latest@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
     restart: unless-stopped
-    command: ["mini", "-dir=/data", "-ip.bind=0.0.0.0", "-metricsPort=9324"]
+    command: ["mini", "-dir=/data", "-ip.bind=0.0.0.0", "-metricsPort=9324", "-s3.config=/etc/seaweedfs-auth/s3.json"]
     environment:
-      AWS_ACCESS_KEY_ID: myota-s3
-      AWS_SECRET_ACCESS_KEY: myota-s3-dev-only
-    volumes: ["seaweedfs-data:/data"]
+      AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
+    volumes:
+      - seaweedfs-data:/data
+      - seaweedfs-s3-config:/etc/seaweedfs-auth:ro
+    depends_on:
+      profile-image-s3-config-init: {condition: service_completed_successfully}
     ports: ["8333:8333", "8888:8888", "9324:9324"]
     healthcheck:
       # Probe the S3 status endpoint. Probing the filer HTML root with
@@ -413,6 +491,38 @@ services:
       AWS_DEFAULT_REGION: us-east-1
     depends_on:
       seaweedfs: {condition: service_healthy}
+  profile-image-bucket-init:
+    image: public.ecr.aws/aws-cli/aws-cli:2.27.41
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: >-
+      if aws s3api head-bucket --bucket myota-user-profile-images
+      --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION"
+      >/dev/null 2>&1; then exit 0; fi;
+      aws s3api create-bucket --bucket myota-user-profile-images --acl private
+      --endpoint-url "$AWS_ENDPOINT_URL" --region "$AWS_DEFAULT_REGION"
+    environment:
+      AWS_ACCESS_KEY_ID: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      AWS_SECRET_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: ${MYOTA_OBJECT_STORAGE_ENDPOINT:-http://seaweedfs:8333}
+    depends_on:
+      seaweedfs: {condition: service_healthy}
+  profile-image-s3-config-init:
+    image: python:3.12-slim
+    restart: "no"
+    network_mode: none
+    entrypoint: ["python3", "/scripts/render_seaweedfs_s3_config.py"]
+    command: ["--output", "/config/s3.json"]
+    environment:
+      MYOTA_OBJECT_STORAGE_ACCESS_KEY: ${MYOTA_OBJECT_STORAGE_ACCESS_KEY:-myota-s3}
+      MYOTA_OBJECT_STORAGE_SECRET_KEY: ${MYOTA_OBJECT_STORAGE_SECRET_KEY:-myota-s3-dev-only}
+      MYOTA_PROFILE_IMAGE_ACCESS_KEY: ${MYOTA_PROFILE_IMAGE_ACCESS_KEY:-myota-profile-image}
+      MYOTA_PROFILE_IMAGE_SECRET_KEY: ${MYOTA_PROFILE_IMAGE_SECRET_KEY:-myota-profile-image-dev-only}
+      MYOTA_PROFILE_IMAGE_BUCKET: myota-user-profile-images
+    volumes:
+      - ./scripts/render_seaweedfs_s3_config.py:/scripts/render_seaweedfs_s3_config.py:ro
+      - seaweedfs-s3-config:/config
   loki:
     image: grafana/loki:3.7.8
     profiles: [observability]
@@ -517,10 +627,21 @@ volumes:
   postgis-data:
   activity-data:
   geo-data:
+  email-data:
   nats-data:
   seaweedfs-data:
+  seaweedfs-s3-config:
   prometheus-data:
   grafana-data:
   tempo-data:
   loki-data:
   alertmanager-data:
+secrets:
+  email-postgres-password:
+    file: ${EMAIL_POSTGRES_PASSWORD_FILE:?set EMAIL_POSTGRES_PASSWORD_FILE to a local secret file}
+  email-database-url:
+    file: ${EMAIL_DATABASE_URL_FILE:?set EMAIL_DATABASE_URL_FILE to the myota_email connection URL secret file}
+  email-identity-client-secret:
+    file: ${MYOTA_EMAIL_SERVICE_CLIENT_SECRET_FILE:?set MYOTA_EMAIL_SERVICE_CLIENT_SECRET_FILE to the Identity client secret file}
+  email-smtp-password:
+    file: ${EMAIL_SMTP_PASSWORD_FILE:?set EMAIL_SMTP_PASSWORD_FILE to a non-production SMTP password file}

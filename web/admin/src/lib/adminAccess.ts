@@ -52,9 +52,28 @@ export function canAdministerLocation(account: Account | null): boolean {
 
 export interface RoleAssignment {
   role: string;
+  scopes?: string[];
   programmeSlug?: string | null;
   jurisdiction?: string | null;
   entityType?: string | null;
+}
+
+export function mayGrantRole(
+  account: Account | null,
+  role: { scopes?: string[] },
+): boolean {
+  if (!account) return false;
+  const actorScopes = grantedScopes(account);
+  const actorPrivileges = new Set(
+    [...actorScopes].filter((scope) => scope !== "identity.me"),
+  );
+  const targetScopes = new Set(role.scopes || []);
+  if (targetScopes.has("*")) return false;
+  if (actorPrivileges.has("*")) return true;
+  return (
+    targetScopes.size < actorPrivileges.size &&
+    [...targetScopes].every((scope) => actorPrivileges.has(scope))
+  );
 }
 
 /** Retained role codes keep every existing scope-bound assignment, not new global grants. */

@@ -17,7 +17,7 @@
       },
       "targets": [
         {
-          "expr": "myota_identity_users_total{job=\"myota-otel-collector\"}",
+          "expr": "myota_identity_users{job=\"myota-otel-collector\"}",
           "refId": "A"
         }
       ]
@@ -65,7 +65,7 @@
       },
       "targets": [
         {
-          "expr": "myota_programmes_total{job=\"myota-otel-collector\"}",
+          "expr": "myota_programmes{job=\"myota-otel-collector\"}",
           "refId": "A"
         }
       ]

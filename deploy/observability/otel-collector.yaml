@@ -113,6 +113,10 @@ receivers:
           scrape_interval: 15s
           static_configs:
             - targets: [outbox-core:9108, outbox-activity:9108, outbox-geo:9108]
+        - job_name: myota-email
+          scrape_interval: 15s
+          static_configs:
+            - targets: [myota-email:9108]
         - job_name: seaweedfs
           scrape_interval: 15s
           static_configs:

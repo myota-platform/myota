@@ -24,11 +24,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: web/participant/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check JavaScript syntax
-        run: node --check web/app.js
+      - name: Install Participant Web test dependencies
+        run: npm ci
+      - name: Check profile scripts and UI behavior
+        run: |
+          node --check web/profile-utils.js
+          node --check web/app.js
+          npm test
       - name: Test static site structure
         run: python -m unittest discover -s tests -v
 

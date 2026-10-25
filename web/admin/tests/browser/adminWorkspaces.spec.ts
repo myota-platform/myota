@@ -1,7 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Isolated API responses qualify presentation and save payloads, not live mutations.
-async function fixtures(page: Page, scopes = ["*"], failure = "") {
+async function fixtures(
+  page: Page,
+  scopes = ["*"],
+  failure = "",
+  staleAuthorization = false,
+  targetIdentityAdmin = false,
+  accountCreateStatus = 201,
+) {
   const requests: string[] = [];
   const writes: Array<{ path: string; body: any }> = [];
   const errors: string[] = [];
@@ -28,6 +35,7 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
         entityType: "TRAIL",
       },
     ],
+    scopes: ["geodata.review", "identity.me"],
   };
   const roles = [
     {
@@ -48,7 +56,26 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
       system: true,
       scopes: ["*"],
     },
+    {
+      code: "IDENTITY_ADMIN",
+      name: "Identity administrator",
+      system: true,
+      scopes: [
+        "identity.admin",
+        "identity.accounts.create",
+        "identity.roles.assign",
+        "identity.audit.read",
+      ],
+    },
   ];
+  if (targetIdentityAdmin)
+    user.roles.push({
+      role: "IDENTITY_ADMIN",
+      programmeSlug: null,
+      jurisdiction: null,
+      entityType: null,
+      scopes: roles.find((role) => role.code === "IDENTITY_ADMIN")?.scopes,
+    });
   const category: any = {
     code: "PARK",
     label: "Existing park",
@@ -71,9 +98,10 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
     status: "PUBLISHED",
   };
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript(() =>
-    localStorage.setItem("myota_admin_access", "isolated-token"),
-  );
+  await page.addInitScript(() => {
+    localStorage.setItem("myota_admin_access", "isolated-token");
+    localStorage.setItem("myota_admin_refresh", "isolated-refresh-token");
+  });
   await page.route("https://tile.openstreetmap.org/**", (route) =>
     route.abort(),
   );
@@ -88,13 +116,27 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
         status: 503,
         json: { detail: "Temporarily unavailable; retry." },
       });
+    if (staleAuthorization && path === "/v1/identity/admin/roles")
+      return route.fulfill({
+        status: 403,
+        json: { detail: "Permission changed." },
+      });
     let body: any = { items: [], total: 0 };
-    if (path === "/v1/identity/me")
+    if (path === "/v1/identity/auth/refresh")
+      body = {
+        accessToken: "refreshed-isolated-token",
+        refreshToken: "refreshed-isolated-refresh-token",
+      };
+    else if (path === "/v1/identity/me")
       body = {
         id: "admin",
         displayName: "Test administrator",
         email: "admin@example.test",
-        scopes,
+        scopes:
+          staleAuthorization &&
+          requests.filter((requested) => requested === path).length > 1
+            ? ["identity.me"]
+            : scopes,
       };
     else if (path === "/v1/programmes") body = { items: programmes, total: 2 };
     else if (path === "/v1/identity/admin/accounts")
@@ -104,12 +146,30 @@ async function fixtures(page: Page, scopes = ["*"], failure = "") {
         items: roles,
         permissions: [{ code: "activity.read", label: "Read activity" }],
       };
-    else if (path === "/v1/identity/accounts/user-1") {
+    else if (path === "/v1/identity/accounts" && request.method() === "POST") {
+      if (accountCreateStatus !== 201)
+        return route.fulfill({
+          status: accountCreateStatus,
+          json: { detail: "email already exists" },
+        });
+      body = {
+        id: "created-user",
+        ...request.postDataJSON(),
+        status: "PENDING_SETUP",
+        roles: [{ role: "PARTICIPANT" }],
+      };
+      return route.fulfill({ status: 201, json: body });
+    } else if (path === "/v1/identity/accounts/user-1") {
       const payload = request.postDataJSON();
       Object.assign(user, {
         ...payload,
         roles: payload.roles
-          ? payload.roles.map((role: any) => ({ ...role, role: role.code }))
+          ? payload.roles.map((role: any) => ({
+              ...role,
+              role: role.code,
+              scopes: roles.find((definition) => definition.code === role.code)
+                ?.scopes,
+            }))
           : user.roles,
       });
       delete user.password;
@@ -220,6 +280,12 @@ test("user saves retain scoped assignments, clear password and keep roles in sep
   await expect(page.getByLabel("Display name", { exact: true })).toHaveValue(
     "Existing user",
   );
+  await expect(
+    page.getByText(/Effective permissions: geodata.review/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: /GLOBAL_OPERATOR/ }),
+  ).toBeDisabled();
   await page.getByLabel("Display name", { exact: true }).fill("Renamed user");
   await page.getByRole("button", { name: "Save user", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("User saved");
@@ -258,6 +324,75 @@ test("user saves retain scoped assignments, clear password and keep roles in sep
   expect(state.errors).toEqual([]);
 });
 
+test("the current account cannot edit its own role assignments", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/v1/identity/me", async (route) =>
+    route.fulfill({
+      json: {
+        id: "user-1",
+        displayName: "Existing user",
+        email: "fixture@example.test",
+        scopes: ["*"],
+      },
+    }),
+  );
+  await page.goto("/identity");
+  await page.getByRole("button", { name: /Existing user/ }).click();
+  await expect(page.getByText(/because this is your account/)).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: /Geodata reviewer/ }),
+  ).toBeDisabled();
+});
+
+test("an administrator can revoke an existing higher role without regranting it", async ({
+  page,
+}) => {
+  const state = await fixtures(
+    page,
+    ["identity.me", "identity.admin", "identity.roles.assign"],
+    "",
+    false,
+    true,
+  );
+  await page.goto("/identity");
+  await page.getByRole("button", { name: /Existing user/ }).click();
+  const identityRole = page.getByRole("checkbox", {
+    name: /Identity administrator/,
+  });
+  await expect(identityRole).toBeChecked();
+  await identityRole.uncheck();
+  await page.getByRole("button", { name: "Save user", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("User saved");
+  expect(state.writes[0].body.roles).not.toContainEqual(
+    expect.objectContaining({ code: "IDENTITY_ADMIN" }),
+  );
+  expect(state.writes[0].body.roles).toContainEqual(
+    expect.objectContaining({ code: "GEO_APPROVER" }),
+  );
+});
+
+test("a forbidden request refreshes current Identity permissions and denies the stale page", async ({
+  page,
+}) => {
+  const state = await fixtures(
+    page,
+    ["identity.me", "identity.admin", "identity.roles.assign"],
+    "",
+    true,
+  );
+  await page.goto("/identity");
+  await expect(page).toHaveURL(/\/access-denied$/);
+  await expect(
+    page.getByRole("heading", { name: "Access not available" }),
+  ).toBeVisible();
+  expect(
+    state.requests.filter((path) => path === "/v1/identity/me").length,
+  ).toBeGreaterThanOrEqual(2);
+  expect(state.errors).toEqual([]);
+});
+
 test("roles-only access loads no account/security lists and opens the roles tab", async ({
   page,
 }) => {
@@ -274,6 +409,128 @@ test("roles-only access loads no account/security lists and opens the roles tab"
       (path) => path.endsWith("/accounts") || path.endsWith("/security-events"),
     ),
   ).toBe(false);
+});
+
+test("account creators can submit participants without a password", async ({
+  page,
+}) => {
+  const state = await fixtures(page, ["identity.accounts.create"]);
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const form = page.locator("form.account-create-form");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  expect(
+    await form
+      .locator('input[type="email"]')
+      .evaluate((input) => (input as HTMLInputElement).validity.valueMissing),
+  ).toBe(true);
+  expect(state.writes).toEqual([]);
+
+  await form.getByLabel("Display name").fill("New participant");
+  await form.getByLabel("Email").fill("new-participant@example.test");
+  await form.getByLabel("Participant type").selectOption("SWL");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("PENDING_SETUP");
+  await expect(page.getByRole("status")).toContainText(
+    "No invitation was sent",
+  );
+  expect(state.writes).toHaveLength(1);
+  expect(state.writes[0]).toMatchObject({
+    path: "/v1/identity/accounts",
+    body: {
+      displayName: "New participant",
+      email: "new-participant@example.test",
+      participationType: "SWL",
+    },
+  });
+  expect(state.writes[0].body).not.toHaveProperty("password");
+  expect(state.writes[0].body).not.toHaveProperty("roles");
+  expect(state.requests).toContain("/v1/identity/admin/roles");
+  expect(
+    state.requests.some(
+      (path) =>
+        path === "/v1/identity/admin/accounts" ||
+        path.startsWith("/v1/identity/admin/security-events"),
+    ),
+  ).toBe(false);
+  expect(state.errors).toEqual([]);
+});
+
+test("only grantable additional roles are offered during account creation", async ({
+  page,
+}) => {
+  const state = await fixtures(page, ["*"]);
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const form = page.locator("form.account-create-form");
+  const adminGrant = form.getByRole("checkbox", {
+    name: /Identity administrator/,
+  });
+  await expect(adminGrant).toBeVisible();
+  await adminGrant.check();
+  await form.getByLabel("Display name").fill("Delegated administrator");
+  await form.getByLabel("Email").fill("delegated@example.test");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  expect(state.writes[0].body.roles).toEqual([{ role: "IDENTITY_ADMIN" }]);
+  expect(state.writes[0].body).not.toHaveProperty("password");
+
+  const restricted = await fixtures(page, [
+    "identity.accounts.create",
+    "identity.roles.assign",
+  ]);
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const restrictedForm = page.locator("form.account-create-form");
+  await expect(
+    restrictedForm.getByRole("checkbox", { name: /Identity administrator/ }),
+  ).toHaveCount(0);
+  await expect(restrictedForm).toContainText(
+    "No additional roles are within your current grant authority.",
+  );
+  expect(restricted.writes).toEqual([]);
+});
+
+test("duplicate email and authorization outcomes are safe and actionable", async ({
+  page,
+}) => {
+  const state = await fixtures(
+    page,
+    ["identity.accounts.create"],
+    "",
+    false,
+    false,
+    400,
+  );
+  await page.goto("/identity");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  const form = page.locator("form.account-create-form");
+  await form.getByLabel("Display name").fill("Duplicate participant");
+  await form.getByLabel("Email").fill("existing@example.test");
+  await form
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "An account with this email already exists",
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Search for the existing account instead",
+  );
+  expect(state.writes).toHaveLength(1);
+  expect(state.errors).toEqual([]);
 });
 
 test("published policies/content are read-only and programme scope appears once", async ({
@@ -443,6 +700,7 @@ test("Grafana stays inside the Admin UI and renews its expiring auth cookie", as
 }) => {
   let refreshes = 0;
   await page.addInitScript(() => {
+    if (window.top !== window) return;
     const encode = (value: unknown) =>
       btoa(JSON.stringify(value))
         .replace(/=/g, "")
@@ -495,11 +753,15 @@ test("Grafana stays inside the Admin UI and renews its expiring auth cookie", as
   );
   await expect.poll(() => refreshes).toBe(1);
 
-  const cookie = (await page.context().cookies()).find(
-    (item) => item.name === "myota_admin_access",
-  );
-  expect(cookie?.path).toBe("/observability");
-  expect(cookie?.value).toBe(
-    await page.evaluate(() => localStorage.getItem("myota_admin_access")),
-  );
+  await expect
+    .poll(async () => {
+      const cookie = (await page.context().cookies()).find(
+        (item) => item.name === "myota_admin_access",
+      );
+      const token = await page.evaluate(() =>
+        localStorage.getItem("myota_admin_access"),
+      );
+      return cookie?.path === "/observability" && cookie.value === token;
+    })
+    .toBe(true);
 });
